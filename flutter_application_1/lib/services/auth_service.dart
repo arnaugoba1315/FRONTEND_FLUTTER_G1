@@ -112,6 +112,12 @@ class AuthService with ChangeNotifier {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user', json.encode(userData));
           
+          // Primero desconectar si ya estaba conectado
+          socketService.disconnect();
+          
+          // Esperar un momento antes de intentar conectar para evitar errores
+          await Future.delayed(Duration(milliseconds: 500));
+          
           // Conectar Socket.IO
           socketService.connect(user);
           

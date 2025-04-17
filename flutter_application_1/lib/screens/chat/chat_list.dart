@@ -17,21 +17,41 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final UserService _userService = UserService();
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _loadChatRooms();
-    _loadUsers();
+    // NO cargar datos aquí, usar didChangeDependencies
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Solo inicializar una vez
+    if (!_isInitialized) {
+      _isInitialized = true;
+      // Usar Future.microtask para evitar setState durante build
+      Future.microtask(() {
+        _loadChatRooms();
+        _loadUsers();
+      });
+    }
   }
 
   Future<void> _loadUsers() async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoadingUsers = true;
     });
 
     try {
       final response = await _userService.getUsers(limit: 100);
+      
+      if (!mounted) return;
+      
       setState(() {
         _users = response['users']
             .map<Map<String, dynamic>>((user) => {
@@ -43,6 +63,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
       });
     } catch (e) {
       print('Error cargando usuarios: $e');
+      
+      if (!mounted) return;
+      
       setState(() {
         _isLoadingUsers = false;
       });
@@ -112,7 +135,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Widget _buildChatRoomsList(List<ChatRoom> chatRooms) {
     return RefreshIndicator(
-      onRefresh: _loadChatRooms,
+      onRefresh: () async {
+        await _loadChatRooms();
+      },
       child: ListView.builder(
         itemCount: chatRooms.length,
         itemBuilder: (context, index) {
@@ -192,6 +217,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController participantsController = TextEditingController();
     List<String> selectedUserIds = [];
+    String? selectedUserId;  // Variable para el dropdown actual
     
     showDialog(
       context: context,
@@ -239,24 +265,30 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   const SizedBox(height: 16),
                   _isLoadingUsers
                       ? const Center(child: CircularProgressIndicator())
-                      : DropdownButtonFormField<String>(
-                          hint: const Text('Seleccionar participante'),
-                          items: _users
-                              .where((user) => !selectedUserIds.contains(user['id']))
-                              .map<DropdownMenuItem<String>>((user) {
-                            return DropdownMenuItem<String>(
-                              value: user['id'],
-                              child: Text(user['username']),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() {
-                                selectedUserIds.add(value);
-                              });
-                            }
-                          },
-                        ),
+                      : _users.isEmpty
+                        ? const Text('No hay usuarios disponibles')
+                        : // Asegurarse de que hay usuarios disponibles para mostrar
+                          DropdownButton<String>(
+                            hint: const Text('Seleccionar participante'),
+                            value: selectedUserId,
+                            isExpanded: true,
+                            items: _users
+                                .where((user) => !selectedUserIds.contains(user['id']))
+                                .map<DropdownMenuItem<String>>((user) {
+                              return DropdownMenuItem<String>(
+                                value: user['id'],
+                                child: Text(user['username']),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  selectedUserIds.add(value);
+                                  selectedUserId = null; // Resetear después de seleccionar
+                                });
+                              }
+                            },
+                          ),
                   
                   const SizedBox(height: 16),
                   const Text(
@@ -315,25 +347,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       }
                     }
                     
-                    // Crear sala de chat
-                    final room = await chatService.createChatRoom(
-                      nameController.text,
-                      participants,
-                    );
-                    
-                    if (room != null) {
-                      // Navegar a la nueva sala
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatRoomScreen(roomId: room.id),
-                        ),
+                    try {
+                      // Crear sala de chat
+                      final room = await chatService.createChatRoom(
+                        nameController.text,
+                        participants,
                       );
-                    } else {
+                      
+                      if (room != null) {
+                        // Navegar a la nueva sala
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatRoomScreen(roomId: room.id),
+                          ),
+                        );
+                      } else {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Error al crear la sala de chat')),
+                        );
+                      }
+                    } catch (e) {
+                      print('Error al crear sala de chat: $e');
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error al crear la sala de chat')),
+                        SnackBar(content: Text('Error: $e')),
                       );
                     }
                   }

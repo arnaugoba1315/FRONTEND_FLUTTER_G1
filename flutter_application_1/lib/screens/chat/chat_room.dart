@@ -23,11 +23,24 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   Timer? _typingTimer;
   bool _isTyping = false;
   String? _userTyping;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
+    // No cargar mensajes en initState, lo haremos en didChangeDependencies
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Solo cargar mensajes una vez
+    if (!_isInitialized) {
+      _isInitialized = true;
+      // Usar Future.microtask para evitar setState durante build
+      Future.microtask(() => _loadMessages());
+    }
   }
 
   @override
@@ -40,36 +53,41 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _loadMessages() async {
     final chatService = Provider.of<ChatService>(context, listen: false);
-    await chatService.loadMessages(widget.roomId);
+    try {
+      await chatService.loadMessages(widget.roomId);
 
-    // Marcar mensajes como leídos
-    final authService = Provider.of<AuthService>(context, listen: false);
-    if (authService.currentUser != null) {
-      await chatService.markMessagesAsRead(authService.currentUser!.id);
-    }
-
-    // Desplazar al último mensaje
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+      // Marcar mensajes como leídos
+      final authService = Provider.of<AuthService>(context, listen: false);
+      if (authService.currentUser != null) {
+        await chatService.markMessagesAsRead(authService.currentUser!.id);
       }
-    });
+
+      // Desplazar al último mensaje
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients && chatService.currentMessages.isNotEmpty) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } catch (e) {
+      print('Error cargando mensajes: $e');
+      // No mostrar el error en la UI para mantener la experiencia limpia
+    }
   }
 
   void _sendMessage() {
     if (_messageController.text.trim().isEmpty) return;
 
     final chatService = Provider.of<ChatService>(context, listen: false);
-    chatService.sendMessage(_messageController.text.trim());
+    chatService.sendMessage(widget.roomId, _messageController.text.trim());
     _messageController.clear();
 
     // Desplazar al último mensaje
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && chatService.currentMessages.isNotEmpty) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
@@ -85,7 +103,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     // Si el usuario comienza a escribir, enviar evento
     if (!_isTyping && text.trim().isNotEmpty) {
       _isTyping = true;
-      chatService.sendTyping();
+      chatService.sendTyping(widget.roomId);
     }
 
     // Reiniciar el temporizador

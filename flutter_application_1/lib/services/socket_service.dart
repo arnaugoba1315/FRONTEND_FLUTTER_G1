@@ -30,8 +30,15 @@ class SocketService with ChangeNotifier {
     notifyListeners();
 
     // Crear instancia de Socket.IO
+    // IMPORTANTE: La URL del socket debe ser la base, no la ruta de la API
+    // Obtenemos la base de la URL de la API sin la parte '/api'
+    final Uri apiUri = Uri.parse(ApiConstants.baseUrl);
+    final String socketUrl = '${apiUri.scheme}://${apiUri.host}:${apiUri.port}';
+    
+    print('Intentando conectar a Socket.IO en: $socketUrl');
+
     _socket = IO.io(
-      ApiConstants.baseUrl, // URL base del servidor (asegúrate de que sea el correcto)
+      socketUrl,
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect() // No conectar automáticamente
@@ -53,6 +60,12 @@ class SocketService with ChangeNotifier {
 
     _socket.on('disconnect', (_) {
       print('Desconectado de Socket.IO');
+      _socketStatus = SocketStatus.disconnected;
+      notifyListeners();
+    });
+
+    _socket.on('connect_error', (data) {
+      print('Error de conexión Socket.IO: $data');
       _socketStatus = SocketStatus.disconnected;
       notifyListeners();
     });
