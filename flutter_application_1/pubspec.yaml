@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  socket_io_client: ^2.0.0
   cupertino_icons: ^1.0.5
   http: ^0.13.5
   provider: ^6.0.5

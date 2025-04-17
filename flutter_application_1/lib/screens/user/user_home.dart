@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/socket_service.dart';
+import 'package:flutter_application_1/widgets/notification_badge.dart';
+import 'package:flutter_application_1/screens/chat/chat_list.dart';
 
 class UserHomeScreen extends StatelessWidget {
   const UserHomeScreen({Key? key}) : super(key: key);
@@ -9,19 +12,88 @@ class UserHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
+    final socketService = Provider.of<SocketService>(context);
     final user = authService.currentUser;
+
+    // Mostrar estado de la conexión de Socket.IO
+    Widget connectionIndicator() {
+      Color color;
+      String status;
+      
+      switch (socketService.socketStatus) {
+        case SocketStatus.connected:
+          color = Colors.green;
+          status = 'Conectado';
+          break;
+        case SocketStatus.connecting:
+          color = Colors.amber;
+          status = 'Conectando...';
+          break;
+        case SocketStatus.disconnected:
+          color = Colors.red;
+          status = 'Desconectado';
+          break;
+      }
+      
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              status,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('EA Grup 1'),
         actions: [
+          // Indicador de notificaciones
+          const NotificationBadge(
+            iconColor: Colors.white,
+          ),
+          
+          // Botón de chat
+          IconButton(
+            icon: const Icon(Icons.chat),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ChatListScreen()),
+              );
+            },
+            tooltip: 'Chat',
+          ),
+          
+          // Botón de cerrar sesión
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await authService.logout();
+              await authService.logout(socketService);
               Navigator.pushReplacementNamed(context, AppRoutes.login);
             },
-            tooltip: 'Logout',
+            tooltip: 'Cerrar sesión',
           ),
         ],
       ),
@@ -31,6 +103,12 @@ class UserHomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Indicador de conexión
+              Center(
+                child: connectionIndicator(),
+              ),
+              const SizedBox(height: 16),
+              
               Center(
                 child: Container(
                   padding: const EdgeInsets.all(24.0),
@@ -49,7 +127,7 @@ class UserHomeScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       Text(
-                        'Welcome, ${user?.username ?? "User"}',
+                        'Bienvenido, ${user?.username ?? "Usuario"}',
                         style: const TextStyle(
                           fontSize: 24.0,
                           fontWeight: FontWeight.bold,
@@ -58,7 +136,7 @@ class UserHomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 16.0),
                       const Text(
-                        'Here you can manage your sports activities and track your progress.',
+                        'Aquí puedes gestionar tus actividades deportivas y seguir tu progreso.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 16.0,
@@ -71,7 +149,7 @@ class UserHomeScreen extends StatelessWidget {
                           Navigator.pushNamed(context, AppRoutes.userProfile);
                         },
                         icon: const Icon(Icons.person),
-                        label: const Text('View Profile'),
+                        label: const Text('Ver Perfil'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24.0,
@@ -90,6 +168,43 @@ class UserHomeScreen extends StatelessWidget {
               _buildQuickStats(context, user),
               const SizedBox(height: 32.0),
               _buildRecentActivities(context),
+              
+              // Usuarios conectados
+              const SizedBox(height: 32.0),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Usuarios conectados',
+                    style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8.0),
+                  Text(
+                    'Total: ${socketService.onlineUsers.length} usuarios en línea',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 16.0),
+                  Wrap(
+                    spacing: 8.0,
+                    runSpacing: 8.0,
+                    children: socketService.onlineUsers.map((userId) {
+                      return Chip(
+                        avatar: CircleAvatar(
+                          backgroundColor: Colors.green,
+                          radius: 4,
+                        ),
+                        label: Text(userId),
+                        backgroundColor: Colors.green.withOpacity(0.1),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -102,7 +217,7 @@ class UserHomeScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Quick Stats',
+          'Estadísticas rápidas',
           style: TextStyle(
             fontSize: 20.0,
             fontWeight: FontWeight.bold,
@@ -114,7 +229,7 @@ class UserHomeScreen extends StatelessWidget {
             Expanded(
               child: _buildStatCard(
                 context,
-                'Level',
+                'Nivel',
                 '${user?.level ?? 1}',
                 Icons.star,
                 Colors.amber,
@@ -124,7 +239,7 @@ class UserHomeScreen extends StatelessWidget {
             Expanded(
               child: _buildStatCard(
                 context,
-                'Distance',
+                'Distancia',
                 '${((user?.totalDistance ?? 0) / 1000).toStringAsFixed(2)} km',
                 Icons.directions_run,
                 Colors.green,
@@ -134,7 +249,7 @@ class UserHomeScreen extends StatelessWidget {
             Expanded(
               child: _buildStatCard(
                 context,
-                'Time',
+                'Tiempo',
                 '${user?.totalTime ?? 0} min',
                 Icons.timer,
                 Colors.blue,
@@ -196,23 +311,23 @@ class UserHomeScreen extends StatelessWidget {
   }
 
   Widget _buildRecentActivities(BuildContext context) {
-    // Mock data for recent activities
+    // Datos de muestra para actividades recientes
     final List<Map<String, dynamic>> recentActivities = [
       {
-        'name': 'Morning Run',
-        'date': 'Today, 08:00 AM',
+        'name': 'Carrera matutina',
+        'date': 'Hoy, 08:00 AM',
         'type': 'running',
         'distance': '5.2 km',
       },
       {
-        'name': 'Cycling Tour',
-        'date': 'Yesterday, 10:30 AM',
+        'name': 'Vuelta en bicicleta',
+        'date': 'Ayer, 10:30 AM',
         'type': 'cycling',
         'distance': '15.7 km',
       },
       {
-        'name': 'Evening Walk',
-        'date': '2 days ago, 06:00 PM',
+        'name': 'Paseo por la tarde',
+        'date': 'Hace 2 días, 06:00 PM',
         'type': 'walking',
         'distance': '3.1 km',
       },
@@ -225,7 +340,7 @@ class UserHomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Recent Activities',
+              'Actividades recientes',
               style: TextStyle(
                 fontSize: 20.0,
                 fontWeight: FontWeight.bold,
@@ -233,9 +348,9 @@ class UserHomeScreen extends StatelessWidget {
             ),
             TextButton(
               onPressed: () {
-                // Navigate to all activities
+                // Navegar a todas las actividades
               },
-              child: const Text('See All'),
+              child: const Text('Ver todas'),
             ),
           ],
         ),
@@ -303,7 +418,7 @@ class UserHomeScreen extends StatelessWidget {
           ),
         ),
         onTap: () {
-          // Navigate to activity details
+          // Navegar a detalles de actividad
         },
       ),
     );

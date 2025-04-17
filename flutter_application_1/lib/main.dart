@@ -3,12 +3,26 @@ import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/screens/auth/login_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/socket_service.dart';
+import 'package:flutter_application_1/services/chat_service.dart';
+import 'package:flutter_application_1/services/notification_service.dart';
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => SocketService()),
+        ChangeNotifierProxyProvider<SocketService, ChatService>(
+          create: (context) => ChatService(context.read<SocketService>()),
+          update: (context, socketService, previous) => 
+            previous ?? ChatService(socketService),
+        ),
+        ChangeNotifierProxyProvider<SocketService, NotificationService>(
+          create: (context) => NotificationService(context.read<SocketService>()),
+          update: (context, socketService, previous) => 
+            previous ?? NotificationService(socketService),
+        ),
       ],
       child: MyApp(),
     ),

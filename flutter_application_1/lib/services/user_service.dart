@@ -63,6 +63,49 @@ class UserService {
     }
   }
 
+  // Get user by username
+  Future<User?> getUserByUsername(String username) async {
+    try {
+      final uri = Uri.parse('${ApiConstants.users}/username/$username');
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        return User.fromJson(json.decode(response.body));
+      } else if (response.statusCode == 404) {
+        // Usuario no encontrado, pero no es un error
+        return null;
+      }
+      
+      throw Exception('Failed to find user: ${response.statusCode}');
+    } catch (e) {
+      print('Error finding user by username: $e');
+      return null;
+    }
+  }
+
+  // Search users by username
+  Future<List<User>> searchUsers(String searchText) async {
+    try {
+      final uri = Uri.parse('${ApiConstants.users}/search').replace(
+        queryParameters: {
+          'query': searchText,
+        },
+      );
+
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((user) => User.fromJson(user)).toList();
+      }
+      
+      return [];
+    } catch (e) {
+      print('Error searching users: $e');
+      return [];
+    }
+  }
+
   // Create user
   Future<User> createUser(Map<String, dynamic> userData) async {
     try {

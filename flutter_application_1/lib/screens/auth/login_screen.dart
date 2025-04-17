@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/socket_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -34,13 +35,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
       try {
         final authService = Provider.of<AuthService>(context, listen: false);
+        final socketService = Provider.of<SocketService>(context, listen: false);
+        
         final success = await authService.login(
           _usernameController.text,
           _passwordController.text,
+          socketService
         );
 
         if (success) {
-          // Navigate based on user role
+          // Navegar según el rol del usuario
           if (authService.isAdmin) {
             Navigator.pushReplacementNamed(context, AppRoutes.admin);
           } else {
@@ -48,14 +52,14 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else {
           setState(() {
-            _errorMessage = 'Invalid username or password';
+            _errorMessage = 'Usuario o contraseña inválidos';
           });
         }
       } catch (e) {
         setState(() {
-          _errorMessage = 'An error occurred during login';
+          _errorMessage = 'Ocurrió un error durante el inicio de sesión';
         });
-        print('Login error: $e');
+        print('Error de inicio de sesión: $e');
       } finally {
         setState(() {
           _isLoading = false;
@@ -83,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'Sign In',
+                      'Iniciar Sesión',
                       style: TextStyle(
                         fontSize: 24.0,
                         fontWeight: FontWeight.bold,
@@ -94,13 +98,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _usernameController,
                       decoration: const InputDecoration(
-                        labelText: 'Username',
+                        labelText: 'Usuario',
                         prefixIcon: Icon(Icons.person),
                         border: OutlineInputBorder(),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your username';
+                          return 'Por favor ingresa tu nombre de usuario';
                         }
                         return null;
                       },
@@ -109,17 +113,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _passwordController,
                       decoration: const InputDecoration(
-                        labelText: 'Password',
+                        labelText: 'Contraseña',
                         prefixIcon: Icon(Icons.lock),
                         border: OutlineInputBorder(),
                       ),
                       obscureText: true,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
+                          return 'Por favor ingresa tu contraseña';
                         }
                         if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
+                          return 'La contraseña debe tener al menos 6 caracteres';
                         }
                         return null;
                       },
@@ -151,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: Colors.white,
                               )
                             : const Text(
-                                'Sign In',
+                                'Iniciar Sesión',
                                 style: TextStyle(fontSize: 16.0),
                               ),
                       ),
@@ -162,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.pushNamed(context, AppRoutes.register);
                       },
                       child: const Text(
-                        "Don't have an account? Sign Up",
+                        '¿No tienes una cuenta? Regístrate',
                         style: TextStyle(color: Colors.deepPurple),
                       ),
                     ),

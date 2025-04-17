@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/socket_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -38,7 +39,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      _currentUser = (await _authService.login(username, password)) as User?;
+      _currentUser = (await _authService.login(username, password, SocketService())) as User?;
       _isLoading = false;
       notifyListeners();
       return true;
@@ -72,7 +73,7 @@ class AuthProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     
-    await _authService.logout();
+    await _authService.logout(SocketService());
     _currentUser = null;
     
     _isLoading = false;

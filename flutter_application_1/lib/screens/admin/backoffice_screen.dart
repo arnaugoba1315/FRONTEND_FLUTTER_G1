@@ -5,6 +5,8 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/screens/admin/users_management.dart';
 import 'package:flutter_application_1/screens/admin/activities_management.dart';
 
+import '../../services/socket_service.dart';
+
 class BackofficeScreen extends StatefulWidget {
   const BackofficeScreen({Key? key}) : super(key: key);
 
@@ -32,7 +34,8 @@ class _BackofficeScreenState extends State<BackofficeScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await authService.logout();
+              final socketService = Provider.of<SocketService>(context, listen: false);
+              await authService.logout(socketService);
               Navigator.pushReplacementNamed(context, AppRoutes.login);
             },
             tooltip: 'Logout',

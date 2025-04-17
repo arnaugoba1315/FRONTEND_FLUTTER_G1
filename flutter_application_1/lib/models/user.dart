@@ -34,8 +34,21 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    // Manejamos tanto _id como id para mayor compatibilidad
+    String userId = '';
+    if (json.containsKey('_id')) {
+      userId = json['_id'].toString();
+    } else if (json.containsKey('id')) {
+      userId = json['id'].toString();
+    }
+    
+    // Verificación adicional para imprimir información de depuración
+    if (userId.isEmpty) {
+      print("ADVERTENCIA: ID de usuario vacío en respuesta: ${json}");
+    }
+
     return User(
-      id: json['_id'] ?? '',
+      id: userId,
       username: json['username'] ?? '',
       email: json['email'] ?? '',
       profilePicture: json['profilePicture'],
@@ -65,7 +78,7 @@ class User {
 
   Map<String, dynamic> toJson() {
     return {
-      '_id': id,
+      'id': id,
       'username': username,
       'email': email,
       'profilePicture': profilePicture,

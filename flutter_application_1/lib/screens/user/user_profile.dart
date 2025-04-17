@@ -5,6 +5,8 @@ import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/user_service.dart';
 
+import '../../services/socket_service.dart';
+
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({Key? key}) : super(key: key);
 
@@ -139,7 +141,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               final authService = Provider.of<AuthService>(context, listen: false);
-              await authService.logout();
+              final socketService = Provider.of<SocketService>(context, listen: false);
+              await authService.logout(socketService);
               Navigator.pushReplacementNamed(context, AppRoutes.login);
             },
             tooltip: 'Logout',
