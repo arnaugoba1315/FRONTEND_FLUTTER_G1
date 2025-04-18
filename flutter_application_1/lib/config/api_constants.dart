@@ -1,4 +1,5 @@
 class ApiConstants {
+  // Base URL - adjust this to your actual backend URL
   static const String baseUrl = 'http://localhost:3000/api';
   
   // Auth endpoints

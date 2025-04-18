@@ -65,8 +65,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         
         setState(() {
           _user = user;
-          _usernameController.text = user.username;
-          _emailController.text = user.email;
+          _usernameController.text = user?.username ?? '';
+          _emailController.text = user!.email;
           _bioController.text = user.bio ?? '';
           _profilePictureController.text = user.profilePicture ?? '';
         });

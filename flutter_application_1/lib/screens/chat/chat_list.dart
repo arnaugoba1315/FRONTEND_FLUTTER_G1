@@ -18,6 +18,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
   bool _isInitialized = false;
+  bool _isCreatingChat = false;
 
   @override
   void initState() {
@@ -89,12 +90,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadChatRooms,
+            tooltip: 'Recargar chats',
+          ),
+        ],
       ),
-      body: chatService.isLoading
+      body: _isCreatingChat
           ? const Center(child: CircularProgressIndicator())
-          : chatService.chatRooms.isEmpty
-              ? _buildEmptyState()
-              : _buildChatRoomsList(chatService.chatRooms),
+          : chatService.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : chatService.chatRooms.isEmpty
+                  ? _buildEmptyState()
+                  : _buildChatRoomsList(chatService.chatRooms),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showNewChatDialog(context),
         child: const Icon(Icons.add),
@@ -152,11 +162,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     final currentUserId = authService.currentUser?.id ?? '';
     
-    // Filtrar para mostrar nombre del otro participante en chats privados
+    // Get display name - use room name as is (it should already be properly set by the chat service)
     String displayName = room.name;
-    List<String> otherParticipants = room.participants.where((id) => id != currentUserId).toList();
-    if (room.participants.length == 2 && otherParticipants.isNotEmpty) {
-      displayName = otherParticipants[0];
+    if (displayName.isEmpty || displayName == 'Chat Room') {
+      displayName = 'Chat';
     }
     
     return ListTile(
@@ -193,7 +202,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
           MaterialPageRoute(
             builder: (context) => ChatRoomScreen(roomId: room.id),
           ),
-        );
+        ).then((_) {
+          // Reload chat rooms when returning from chat screen
+          _loadChatRooms();
+        });
       },
     );
   }
@@ -205,7 +217,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final messageDate = DateTime(time.year, time.month, time.day);
     
     if (messageDate == today) {
-      return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+      return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     } else if (messageDate == yesterday) {
       return 'Ayer';
     } else {
@@ -215,9 +227,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _showNewChatDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
-    final TextEditingController participantsController = TextEditingController();
     List<String> selectedUserIds = [];
-    String? selectedUserId;  // Variable para el dropdown actual
+    String? selectedUserId;  // Variable for the current dropdown selection
     
     showDialog(
       context: context,
@@ -230,18 +241,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre del chat',
-                      hintText: 'Ej: Amigos, Familia, etc.',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Participantes:'),
-                  const SizedBox(height: 8),
+                  // Skip room name for direct chats - we'll use the other user's name
                   
-                  // Chips para participantes seleccionados
+                  const Text('Selecciona un usuario para chatear:'),
+                  const SizedBox(height: 16),
+                  
+                  // Chips for selected participants
                   if (selectedUserIds.isNotEmpty)
                     Wrap(
                       spacing: 6.0,
@@ -267,9 +272,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _users.isEmpty
                         ? const Text('No hay usuarios disponibles')
-                        : // Asegurarse de que hay usuarios disponibles para mostrar
-                          DropdownButton<String>(
-                            hint: const Text('Seleccionar participante'),
+                        : DropdownButton<String>(
+                            hint: const Text('Seleccionar usuario'),
                             value: selectedUserId,
                             isExpanded: true,
                             items: _users
@@ -283,26 +287,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             onChanged: (value) {
                               if (value != null) {
                                 setState(() {
-                                  selectedUserIds.add(value);
-                                  selectedUserId = null; // Resetear después de seleccionar
+                                  selectedUserIds = [value]; // For direct chats, just use one user
+                                  selectedUserId = null; // Reset after selecting
                                 });
                               }
                             },
                           ),
-                  
-                  const SizedBox(height: 16),
-                  const Text(
-                    'O introduce nombres de usuario manualmente:',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: participantsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombres de usuario (separados por coma)',
-                      hintText: 'usuario1, usuario2, usuario3',
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -313,68 +303,74 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ),
               TextButton(
                 onPressed: () async {
-                  if (nameController.text.isNotEmpty && 
-                      (selectedUserIds.isNotEmpty || participantsController.text.isNotEmpty)) {
+                  if (selectedUserIds.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Selecciona un usuario para chatear')),
+                    );
+                    return;
+                  }
+                  
+                  setState(() => _isCreatingChat = true);
+                  Navigator.pop(context);
+                  
+                  try {
                     final authService = Provider.of<AuthService>(context, listen: false);
                     final chatService = Provider.of<ChatService>(context, listen: false);
                     final currentUserId = authService.currentUser?.id ?? '';
                     
-                    // Añadir el usuario actual como participante
-                    final participants = [currentUserId, ...selectedUserIds];
-                    
-                    // Añadir participantes por nombre de usuario si se ingresaron
-                    if (participantsController.text.isNotEmpty) {
-                      final usernames = participantsController.text
-                          .split(',')
-                          .map((e) => e.trim())
-                          .where((e) => e.isNotEmpty)
-                          .toList();
-                      
-                      // Obtener IDs de estos usuarios
-                      try {
-                        for (var username in usernames) {
-                          // Buscar usuario por nombre
-                          final userData = await _userService.getUserByUsername(username);
-                          if (userData != null && userData.id.isNotEmpty) {
-                            // Evitar duplicados
-                            if (!participants.contains(userData.id)) {
-                              participants.add(userData.id);
-                            }
-                          }
-                        }
-                      } catch (e) {
-                        print('Error al buscar usuarios por nombre: $e');
-                      }
+                    if (currentUserId.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Error: No se pudo identificar el usuario actual')),
+                      );
+                      return;
                     }
                     
+                    // Add the current user to participants list
+                    final participants = [currentUserId, ...selectedUserIds];
+                    
+                    // Get the selected user's name as chat name
+                    String chatName = 'Chat';
                     try {
-                      // Crear sala de chat
-                      final room = await chatService.createChatRoom(
-                        nameController.text,
-                        participants,
+                      // Find the username in our loaded users list
+                      final selectedUser = _users.firstWhere(
+                        (u) => u['id'] == selectedUserIds[0],
+                        orElse: () => {'id': selectedUserIds[0], 'username': 'Chat'},
                       );
-                      
-                      if (room != null) {
-                        // Navegar a la nueva sala
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatRoomScreen(roomId: room.id),
-                          ),
-                        );
-                      } else {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Error al crear la sala de chat')),
-                        );
-                      }
+                      chatName = selectedUser['username'];
                     } catch (e) {
-                      print('Error al crear sala de chat: $e');
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
+                      print('Error getting username: $e');
+                    }
+                    
+                    // Create chat room with the other user's name
+                    final room = await chatService.createChatRoom(
+                      chatName, // This will be replaced with the other user's name in the service
+                      participants,
+                    );
+                    
+                    if (room != null) {
+                      // Navigate to the new chat
+                      if (!mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatRoomScreen(roomId: room.id),
+                        ),
                       );
+                    } else {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Error al crear la sala de chat')),
+                      );
+                    }
+                  } catch (e) {
+                    print('Error creating chat room: $e');
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    if (mounted) {
+                      setState(() => _isCreatingChat = false);
                     }
                   }
                 },

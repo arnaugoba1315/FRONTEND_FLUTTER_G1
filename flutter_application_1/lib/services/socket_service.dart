@@ -11,6 +11,9 @@ class SocketService with ChangeNotifier {
   List<String> _onlineUsers = [];
   List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
+  
+  // Add a debounce timer for typing events
+  DateTime? _lastTypingEvent;
 
   // Getters
   SocketStatus get socketStatus => _socketStatus;
@@ -25,14 +28,15 @@ class SocketService with ChangeNotifier {
   }
 
   // Inicializar Socket.IO
-  void _initSocket() {
-    _socketStatus = SocketStatus.disconnected;
-    notifyListeners();
+ void _initSocket() {
+  print('Inicializando servicio Socket.IO');
+  _socketStatus = SocketStatus.connecting;
+  notifyListeners();
 
-    // Crear instancia de Socket.IO
-    // IMPORTANTE: La URL del socket debe ser la base, no la ruta de la API
-    // Obtenemos la base de la URL de la API sin la parte '/api'
+  try {
+    // IMPORTANTE: La URL debe coincidir exactamente con tu backend
     final Uri apiUri = Uri.parse(ApiConstants.baseUrl);
+    // Nota: Socket.IO normalmente se conecta al puerto base, no a /api
     final String socketUrl = '${apiUri.scheme}://${apiUri.host}:${apiUri.port}';
     
     print('Intentando conectar a Socket.IO en: $socketUrl');
@@ -40,77 +44,133 @@ class SocketService with ChangeNotifier {
     _socket = IO.io(
       socketUrl,
       IO.OptionBuilder()
-          .setTransports(['websocket'])
-          .disableAutoConnect() // No conectar automáticamente
+          .setTransports(['websocket']) // Usar solo websocket, más estable
+          .disableAutoConnect()
           .enableForceNew()
+          .setTimeout(10000) // Aumentar timeout a 10 segundos
           .build(),
     );
 
-    // Configurar listeners
+    // Configurar listeners de forma explícita
     _setupSocketListeners();
+  } catch (e) {
+    print('Error inicializando Socket.IO: $e');
+    _socketStatus = SocketStatus.disconnected;
+    notifyListeners();
   }
-
+}
   // Configurar listeners de Socket.IO
   void _setupSocketListeners() {
-    _socket.on('connect', (_) {
-      print('Conectado a Socket.IO');
+    _socket.onConnect((_) {
+      print('Connected to Socket.IO');
       _socketStatus = SocketStatus.connected;
       notifyListeners();
     });
 
-    _socket.on('disconnect', (_) {
-      print('Desconectado de Socket.IO');
+    _socket.onDisconnect((_) {
+      print('Disconnected from Socket.IO');
       _socketStatus = SocketStatus.disconnected;
       notifyListeners();
     });
 
-    _socket.on('connect_error', (data) {
-      print('Error de conexión Socket.IO: $data');
+    _socket.onConnectError((data) {
+      print('Socket.IO connection error: $data');
       _socketStatus = SocketStatus.disconnected;
       notifyListeners();
+    });
+
+    _socket.onConnectTimeout((_) {
+      print('Socket.IO connection timeout');
+      _socketStatus = SocketStatus.disconnected;
+      notifyListeners();
+    });
+    
+    _socket.onError((data) {
+      print('Socket.IO error: $data');
     });
 
     _socket.on('user_status', (data) {
-      print('Estado de usuario actualizado: $data');
-      if (data['onlineUsers'] != null) {
+      print('User status updated: $data');
+      if (data != null && data['onlineUsers'] != null) {
         _onlineUsers = List<String>.from(data['onlineUsers']);
         notifyListeners();
       }
     });
 
     _socket.on('notification', (data) {
-      print('Nueva notificación recibida: $data');
-      _notifications.insert(0, data);
-      _unreadNotifications++;
-      notifyListeners();
-    });
-
-    _socket.on('error', (data) {
-      print('Error de Socket.IO: $data');
+      print('New notification received: $data');
+      if (data != null) {
+        _notifications.insert(0, data);
+        _unreadNotifications++;
+        notifyListeners();
+      }
     });
   }
 
-  // Conectar al servidor con autenticación
-  void connect(User? user) {
-    if (user == null || user.id.isEmpty) {
-      print('No se puede conectar sin ID de usuario');
-      return;
-    }
+  // Actualiza la función connect para incluir más información
+void connect(User? user) {
+  if (user == null || user.id.isEmpty) {
+    print('No se puede conectar sin ID de usuario');
+    return;
+  }
 
-    // Configurar datos de autenticación
-    _socket.auth = {
-      'userId': user.id,
-    };
+  // Desconectar primero si ya estaba conectado
+  if (_socketStatus != SocketStatus.disconnected) {
+    print('Ya conectado, desconectando primero');
+    _socket.disconnect();
+    // Esperar un momento para la desconexión
+    Future.delayed(Duration(milliseconds: 500), () {
+      _connectWithUser(user);
+    });
+  } else {
+    _connectWithUser(user);
+  }
+}
+// Nueva función auxiliar para separar la lógica
+void _connectWithUser(User user) {
+  print('Conectando con ID de usuario: ${user.id}, username: ${user.username}');
+  
+  // Configurar datos de autenticación con más detalles
+  _socket.auth = {
+    'userId': user.id,
+    'username': user.username,
+    'role': user.role,
+    'timestamp': DateTime.now().toIso8601String(),
+  };
 
-    // Conectar al servidor
+  try {
+    // Intentar conectar
     _socket.connect();
-    print('Conectando con ID de usuario: ${user.id}');
+    print('Conexión Socket.IO iniciada...');
+    _socketStatus = SocketStatus.connecting;
+    notifyListeners();
+    
+    // Definir un timeout por si la conexión no se establece
+    Future.delayed(Duration(seconds: 10), () {
+      if (_socketStatus == SocketStatus.connecting) {
+        print('Timeout de conexión Socket.IO');
+        _socketStatus = SocketStatus.disconnected;
+        notifyListeners();
+      }
+    });
+  } catch (e) {
+    print('Error conectando Socket.IO: $e');
+    _socketStatus = SocketStatus.disconnected;
+    notifyListeners();
   }
+}
 
   // Desconectar del servidor
   void disconnect() {
-    if (_socketStatus != SocketStatus.disconnected) {
-      _socket.disconnect();
+    try {
+      if (_socketStatus != SocketStatus.disconnected) {
+        print('Disconnecting from Socket.IO');
+        _socket.disconnect();
+        _socketStatus = SocketStatus.disconnected;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error disconnecting from Socket.IO: $e');
       _socketStatus = SocketStatus.disconnected;
       notifyListeners();
     }
@@ -119,34 +179,68 @@ class SocketService with ChangeNotifier {
   // Unirse a una sala de chat
   void joinChatRoom(String roomId) {
     if (_socketStatus != SocketStatus.connected) {
-      print('No se puede unir a la sala: no conectado');
+      print('Cannot join room: not connected');
       return;
     }
 
-    _socket.emit('join_room', roomId);
-    print('Unido a la sala de chat: $roomId');
+    try {
+      print('Joining chat room: $roomId');
+      _socket.emit('join_room', roomId);
+    } catch (e) {
+      print('Error joining chat room: $e');
+    }
   }
 
   // Enviar mensaje
   void sendMessage(String roomId, String content) {
-    if (_socketStatus != SocketStatus.connected) {
-      print('No se puede enviar mensaje: no conectado');
-      return;
-    }
-
-    final message = {
-      'roomId': roomId,
-      'content': content,
-    };
-
-    _socket.emit('send_message', message);
-    print('Mensaje enviado a la sala $roomId: $content');
+  if (_socketStatus != SocketStatus.connected) {
+    print('No se puede enviar mensaje: no conectado (estado: $_socketStatus)');
+    return;
   }
 
-  // Enviar estado "escribiendo..."
+  try {
+    // Generar un ID único para el mensaje
+    final messageId = 'msg_${DateTime.now().millisecondsSinceEpoch}_${_socket.id ?? 'nodeid'}';
+    
+    // Crear objeto de mensaje completo
+    final message = {
+      'id': messageId,
+      'roomId': roomId,
+      'content': content,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    print('Enviando mensaje a través de Socket.IO - Sala: $roomId, Contenido: $content, ID: $messageId');
+    _socket.emit('send_message', message);
+    
+    // Añadir verificación de emisión
+    Future.delayed(Duration(milliseconds: 500), () {
+      print('Verificando estado de Socket.IO después de enviar: ${_socket.connected ? 'Conectado' : 'Desconectado'}');
+    });
+  } catch (e) {
+    print('Error al enviar mensaje por Socket.IO: $e');
+  }
+}
+
+  // Enviar estado "escribiendo..." (con debounce)
   void sendTyping(String roomId) {
     if (_socketStatus != SocketStatus.connected) return;
-    _socket.emit('typing', roomId);
+    
+    // Debounce typing events - only send once every 2 seconds
+    final now = DateTime.now();
+    if (_lastTypingEvent != null) {
+      final difference = now.difference(_lastTypingEvent!);
+      if (difference.inSeconds < 2) {
+        return; // Skip if less than 2 seconds since last event
+      }
+    }
+    
+    try {
+      _lastTypingEvent = now;
+      _socket.emit('typing', roomId);
+    } catch (e) {
+      print('Error sending typing event: $e');
+    }
   }
 
   // Marcar notificaciones como leídas
@@ -170,7 +264,12 @@ class SocketService with ChangeNotifier {
   // Limpiar todo al cerrar sesión
   @override
   void dispose() {
-    _socket.dispose();
+    try {
+      _socket.disconnect();
+      _socket.dispose();
+    } catch (e) {
+      print('Error disposing Socket.IO: $e');
+    }
     super.dispose();
   }
 }
