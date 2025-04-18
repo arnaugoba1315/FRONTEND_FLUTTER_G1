@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
 import 'package:flutter_application_1/services/chat_service.dart';
-import 'package:flutter_application_1/services/notification_service.dart';
+
 
 void main() {
   runApp(
@@ -18,11 +18,7 @@ void main() {
           update: (context, socketService, previous) => 
             previous ?? ChatService(socketService),
         ),
-        ChangeNotifierProxyProvider<SocketService, NotificationService>(
-          create: (context) => NotificationService(context.read<SocketService>()),
-          update: (context, socketService, previous) => 
-            previous ?? NotificationService(socketService),
-        ),
+        
       ],
       child: MyApp(),
     ),
@@ -56,8 +52,8 @@ class _MyAppState extends State<MyApp> {
       socketService.connect(authService.currentUser);
       
       // Load notifications
-      final notificationService = Provider.of<NotificationService>(context, listen: false);
-      await notificationService.loadNotifications(authService.currentUser!.id);
+     
+    
     }
   }
 

@@ -6,7 +6,7 @@ import 'package:flutter_application_1/screens/user/user_profile.dart';
 import 'package:flutter_application_1/screens/admin/backoffice_screen.dart';
 import 'package:flutter_application_1/screens/chat/chat_list.dart';
 import 'package:flutter_application_1/screens/chat/chat_room.dart';
-import 'package:flutter_application_1/screens/notifications/notification_screen.dart';
+
 
 class AppRoutes {
   static const String login = '/login';
@@ -32,8 +32,6 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const BackofficeScreen());
       case chatList:
         return MaterialPageRoute(builder: (_) => const ChatListScreen());
-      case notifications:
-        return MaterialPageRoute(builder: (_) => const NotificationScreen());
       case chatRoom:
         // Extraer roomId de los argumentos
         final args = settings.arguments as Map<String, dynamic>?;

@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
-import 'package:flutter_application_1/widgets/notification_badge.dart';
 import 'package:flutter_application_1/screens/chat/chat_list.dart';
 
 class UserHomeScreen extends StatelessWidget {
@@ -70,9 +69,7 @@ class UserHomeScreen extends StatelessWidget {
         title: const Text('EA Grup 1'),
         actions: [
           // Indicador de notificaciones
-          const NotificationBadge(
-            iconColor: Colors.white,
-          ),
+          
           
           // Botón de chat
           IconButton(
