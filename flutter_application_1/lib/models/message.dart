@@ -21,7 +21,7 @@ class Message {
     // Generate a unique ID if one isn't provided
     String messageId = json['_id'] ?? 
                      json['id'] ?? 
-                     'msg_${DateTime.now().millisecondsSinceEpoch}_${json['senderId']}';
+                     'msg_${DateTime.now().millisecondsSinceEpoch}_${json['senderId'] ?? 'unknown'}';
     
     // Handle different sender field names
     String sender = '';
@@ -29,9 +29,17 @@ class Message {
     if (json['senderId'] != null) sender = json['senderId'];
     
     // Handle different sender name field names
-    String name = 'Usuario';
-    if (json['username'] != null) name = json['username'];
-    if (json['senderName'] != null) name = json['senderName'];
+    String name = '';
+    if (json['username'] != null && json['username'] is String) {
+      name = json['username'];
+    }
+    if (json['senderName'] != null && json['senderName'] is String) {
+      name = json['senderName'];
+    }
+    // Fallback name if none provided
+    if (name.isEmpty) {
+      name = 'Usuario';
+    }
     
     // Handle different content field names
     String messageContent = '';

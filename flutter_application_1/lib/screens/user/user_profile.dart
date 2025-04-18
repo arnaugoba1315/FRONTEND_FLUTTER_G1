@@ -57,8 +57,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     });
 
     try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final userId = authService.currentUser?.id;
+      final userId = Provider.of<AuthService>(context, listen: false).currentUser?.id;
       
       if (userId != null) {
         final user = await _userService.getUserById(userId);

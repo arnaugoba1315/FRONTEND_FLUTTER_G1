@@ -4,9 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/message.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/chat_service.dart';
-
-
-import '../../models/chat_room_model.dart';
+import 'package:flutter_application_1/models/chat_room_model.dart';
+import 'package:flutter_application_1/services/socket_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String roomId;
@@ -20,34 +19,57 @@ class ChatRoomScreen extends StatefulWidget {
   _ChatRoomScreenState createState() => _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends State<ChatRoomScreen> {
+class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  // Removed unused _userService field
   
-  Timer? _typingTimer;
-  bool _isTyping = false;
-  String? _userTyping;
   bool _isInitialized = false;
   String _roomTitle = "Chat";
+  ChatRoom? _currentRoom;
+  bool _isAtBottom = true;
+  Timer? _roomRefreshTimer;
   
-  // Track seen messages to avoid duplicates in UI
-  Set<String> _displayedMessageIds = {};
-
   @override
   void initState() {
     super.initState();
-    // Will load messages in didChangeDependencies
+    WidgetsBinding.instance.addObserver(this);
+    
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
+        setState(() {
+          _isAtBottom = true;
+        });
+      } else {
+        setState(() {
+          _isAtBottom = false;
+        });
+      }
+    });
+    
+    // Configurar temporizador para recargar periódicamente
+    _roomRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _loadMessages();
+      }
+    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Only initialize once
+    // Solo inicializar una vez
     if (!_isInitialized) {
       _isInitialized = true;
       _loadChatRoom();
+    }
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // La app volvió al primer plano, recargar mensajes
+      _loadMessages();
     }
   }
 
@@ -55,7 +77,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _typingTimer?.cancel();
+    _roomRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -79,43 +102,36 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         orElse: () => ChatRoom(id: '', name: '', participants: [], createdAt: DateTime.now()),
       );
       
-      // Use the room name from service
       setState(() {
-        _roomTitle = room.name;
+        _currentRoom = room;
+        _roomTitle = room.name.isNotEmpty ? room.name : 'Chat';
       });
-      return;
-      
-      // If room not found in service or name is generic, try to get other participant's name
     } catch (e) {
       print('Error loading room details: $e');
     }
   }
 
   Future<void> _loadMessages() async {
-  final chatService = Provider.of<ChatService>(context, listen: false);
-  final authService = Provider.of<AuthService>(context, listen: false);
-  
-  try {
-    // Añadir este debug log
-    print('Cargando mensajes para sala: ${widget.roomId}');
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
     
-    // Cargar mensajes para esta sala
-    await chatService.loadMessages(widget.roomId);
-    
-    // Debug: verificar cuántos mensajes se cargaron
-    print('Mensajes cargados: ${chatService.currentMessages.length}');
+    try {
+      // Cargar mensajes para esta sala
+      await chatService.loadMessages(widget.roomId);
 
-    // Mark messages as read
-    if (authService.currentUser != null) {
-      await chatService.markMessagesAsRead(authService.currentUser!.id);
+      // Mark messages as read
+      if (authService.currentUser != null) {
+        await chatService.markMessagesAsRead(authService.currentUser!.id);
+      }
+
+      // Scroll to the bottom if we were already at the bottom
+      if (_isAtBottom) {
+        _scrollToBottom();
+      }
+    } catch (e) {
+      print('Error loading messages: $e');
     }
-
-    // Scroll to the bottom after messages load
-    _scrollToBottom();
-  } catch (e) {
-    print('Error loading messages: $e');
   }
-}
   
   void _scrollToBottom() {
     // Delay to ensure the list is rendered
@@ -139,28 +155,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     chatService.sendMessage(widget.roomId, messageText);
     _messageController.clear();
     
-    // Scroll to bottom after sending (even before message appears)
+    // Scroll to bottom after sending
+    setState(() {
+      _isAtBottom = true;
+    });
     _scrollToBottom();
   }
 
   void _onTyping(String text) {
     final chatService = Provider.of<ChatService>(context, listen: false);
 
-    // If the user starts typing and wasn't before, send typing event
-    if (!_isTyping && text.trim().isNotEmpty) {
-      _isTyping = true;
+    if (text.trim().isNotEmpty) {
       chatService.sendTyping(widget.roomId);
     }
-
-    // Reset typing timer
-    _typingTimer?.cancel();
-    
-    // Set timer to mark user as no longer typing after 2 seconds
-    _typingTimer = Timer(const Duration(seconds: 2), () {
-      setState(() {
-        _isTyping = false;
-      });
-    });
   }
 
   @override
@@ -168,18 +175,60 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final authService = Provider.of<AuthService>(context);
     final chatService = Provider.of<ChatService>(context);
     final currentUserId = authService.currentUser?.id ?? '';
+    final userTyping = Provider.of<SocketService>(context).userTyping;
     
-    // Get messages without duplicates
+    // Get messages for this room
     final messages = chatService.currentMessages;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_roomTitle),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_roomTitle),
+            if (_currentRoom != null && _currentRoom!.participants.length > 2)
+              Text(
+                '${_currentRoom!.participants.length} participantes',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadMessages,
             tooltip: 'Recargar mensajes',
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'info':
+                  _showRoomInfo();
+                  break;
+                case 'leave':
+                  _leaveRoom();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'info',
+                child: ListTile(
+                  leading: Icon(Icons.info),
+                  title: Text('Información'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'leave',
+                child: ListTile(
+                  leading: Icon(Icons.exit_to_app),
+                  title: Text('Salir del chat'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -188,44 +237,55 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           : Column(
               children: [
                 // Typing indicator
-                if (_userTyping != null)
+                if (userTyping != null)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
                     ),
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      '$_userTyping está escribiendo...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Text(
+                          '$userTyping está escribiendo...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
                 // Message list
-               Expanded(
-                 child: messages.isEmpty
-                  ? _buildEmptyState()
-                   : ListView.builder(
-                       controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                      final message = messages[index];
-            
-                       // Debugging: imprime cada mensaje para verificar qué se está procesando
-                      print('Renderizando mensaje: ${message.id} - ${message.content}');
-            
-            return _buildMessageItem(
-              message,
-              message.senderId == currentUserId,
-            );
-          },
-        ),
-),
+                Expanded(
+                  child: messages.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final message = messages[index];
+                          final bool isCurrentUser = message.senderId == currentUserId;
+                          
+                          return _buildMessageItem(
+                            message,
+                            isCurrentUser,
+                          );
+                        },
+                      ),
+                ),
 
                 // Message input
                 Container(
@@ -250,6 +310,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         icon: const Icon(Icons.attach_file),
                         onPressed: () {
                           // Feature not implemented
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Función no disponible aún')),
+                          );
                         },
                       ),
                       Expanded(
@@ -400,5 +463,68 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final hours = time.hour.toString().padLeft(2, '0');
     final minutes = time.minute.toString().padLeft(2, '0');
     return '$hours:$minutes';
+  }
+  
+  void _showRoomInfo() {
+    if (_currentRoom == null) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_roomTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ID: ${_currentRoom!.id}'),
+            const SizedBox(height: 8),
+            Text('Participantes: ${_currentRoom!.participants.length}'),
+            const SizedBox(height: 8),
+            Text('Creado: ${_formatDate(_currentRoom!.createdAt)}'),
+            if (_currentRoom!.description != null && _currentRoom!.description!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Descripción: ${_currentRoom!.description}'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+  
+  void _leaveRoom() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Salir del chat'),
+        content: const Text('¿Estás seguro de que quieres salir de este chat? Se eliminará de tu lista de chats.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Cerrar diálogo
+              
+              final chatService = Provider.of<ChatService>(context, listen: false);
+              chatService.deleteChatRoom(widget.roomId);
+              
+              Navigator.pop(context); // Volver a la lista de chats
+            },
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -84,7 +84,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
     final chatService = Provider.of<ChatService>(context);
     
     return Scaffold(
@@ -159,54 +158,136 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildChatRoomItem(ChatRoom room) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final currentUserId = authService.currentUser?.id ?? '';
+    // Determine un icono en base al número de participantes
+    IconData iconData = Icons.person;
+    if (room.participants.length > 2) {
+      iconData = Icons.group;
+    }
     
     // Get display name - use room name as is (it should already be properly set by the chat service)
     String displayName = room.name;
-    if (displayName.isEmpty || displayName == 'Chat Room') {
+    if (displayName.isEmpty) {
       displayName = 'Chat';
     }
     
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.deepPurple[100],
-        child: Text(
-          displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-          style: const TextStyle(color: Colors.deepPurple),
+    return Dismissible(
+      key: Key(room.id),
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20.0),
+        child: const Icon(
+          Icons.delete,
+          color: Colors.white,
         ),
       ),
-      title: Text(displayName),
-      subtitle: room.lastMessage != null
-          ? Text(
-              room.lastMessage!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            )
-          : const Text(
-              'No hay mensajes aún',
-              style: TextStyle(fontStyle: FontStyle.italic),
-            ),
-      trailing: room.lastMessageTime != null
-          ? Text(
-              _formatTime(room.lastMessageTime!),
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
-              ),
-            )
-          : null,
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatRoomScreen(roomId: room.id),
-          ),
-        ).then((_) {
-          // Reload chat rooms when returning from chat screen
-          _loadChatRooms();
-        });
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        return await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text("Confirmar"),
+              content: const Text("¿Estás seguro de que quieres eliminar este chat?"),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text("Cancelar"),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text("Eliminar"),
+                ),
+              ],
+            );
+          },
+        );
       },
+      onDismissed: (direction) {
+        final chatService = Provider.of<ChatService>(context, listen: false);
+        chatService.deleteChatRoom(room.id);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chat "${displayName}" eliminado'),
+            action: SnackBarAction(
+              label: 'Deshacer',
+              onPressed: () {
+                // Recargar salas para recuperar la eliminada (si es posible)
+                _loadChatRooms();
+              },
+            ),
+          ),
+        );
+      },
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.deepPurple[100],
+          child: Icon(
+            iconData,
+            color: Colors.deepPurple,
+            size: 24,
+          ),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                displayName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            // Badge for group chats
+            if (room.participants.length > 2)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${room.participants.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.deepPurple[700],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: room.lastMessage != null
+            ? Text(
+                room.lastMessage!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              )
+            : const Text(
+                'No hay mensajes aún',
+                style: TextStyle(fontStyle: FontStyle.italic),
+              ),
+        trailing: room.lastMessageTime != null
+            ? Text(
+                _formatTime(room.lastMessageTime!),
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              )
+            : null,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatRoomScreen(roomId: room.id),
+            ),
+          ).then((_) {
+            // Reload chat rooms when returning from chat screen
+            _loadChatRooms();
+          });
+        },
+      ),
     );
   }
 
@@ -229,42 +310,75 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final TextEditingController nameController = TextEditingController();
     List<String> selectedUserIds = [];
     String? selectedUserId;  // Variable for the current dropdown selection
+    bool isGroupChat = false;
     
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: const Text('Nuevo chat'),
+            title: Text(isGroupChat ? 'Nuevo chat grupal' : 'Nuevo chat'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Skip room name for direct chats - we'll use the other user's name
+                  // Switch entre chat individual y grupal
+                  SwitchListTile(
+                    title: const Text('Chat grupal'),
+                    value: isGroupChat,
+                    onChanged: (value) {
+                      setState(() {
+                        isGroupChat = value;
+                        // Limpiar nombre de sala si cambiamos a chat individual
+                        if (!isGroupChat) {
+                          nameController.clear();
+                        }
+                      });
+                    },
+                  ),
                   
-                  const Text('Selecciona un usuario para chatear:'),
                   const SizedBox(height: 16),
+                  
+                  // Nombre del chat (solo para chats grupales)
+                  if (isGroupChat)
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre del grupo',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 16),
+                  const Text('Selecciona usuarios para el chat:'),
+                  const SizedBox(height: 8),
                   
                   // Chips for selected participants
                   if (selectedUserIds.isNotEmpty)
-                    Wrap(
-                      spacing: 6.0,
-                      runSpacing: 6.0,
-                      children: selectedUserIds.map((userId) {
-                        final user = _users.firstWhere(
-                          (u) => u['id'] == userId,
-                          orElse: () => {'id': userId, 'username': 'Usuario'},
-                        );
-                        return Chip(
-                          label: Text(user['username']),
-                          onDeleted: () {
-                            setState(() {
-                              selectedUserIds.remove(userId);
-                            });
-                          },
-                        );
-                      }).toList(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      constraints: const BoxConstraints(maxHeight: 120),
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 6.0,
+                          runSpacing: 6.0,
+                          children: selectedUserIds.map((userId) {
+                            final user = _users.firstWhere(
+                              (u) => u['id'] == userId,
+                              orElse: () => {'id': userId, 'username': 'Usuario'},
+                            );
+                            return Chip(
+                              label: Text(user['username']),
+                              onDeleted: () {
+                                setState(() {
+                                  selectedUserIds.remove(userId);
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     ),
                   
                   const SizedBox(height: 16),
@@ -287,7 +401,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             onChanged: (value) {
                               if (value != null) {
                                 setState(() {
-                                  selectedUserIds = [value]; // For direct chats, just use one user
+                                  // Para chats individuales, reemplazar la selección
+                                  // Para chats grupales, añadir a la lista
+                                  if (isGroupChat) {
+                                    selectedUserIds.add(value);
+                                  } else {
+                                    selectedUserIds = [value];
+                                  }
                                   selectedUserId = null; // Reset after selecting
                                 });
                               }
@@ -305,13 +425,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 onPressed: () async {
                   if (selectedUserIds.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Selecciona un usuario para chatear')),
+                      const SnackBar(content: Text('Selecciona al menos un usuario para el chat')),
                     );
                     return;
                   }
                   
-                  setState(() => _isCreatingChat = true);
+                  if (isGroupChat && nameController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Debes ingresar un nombre para el chat grupal')),
+                    );
+                    return;
+                  }
+                  
                   Navigator.pop(context);
+                  
+                  setState(() => _isCreatingChat = true);
                   
                   try {
                     final authService = Provider.of<AuthService>(context, listen: false);
@@ -328,23 +456,30 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     // Add the current user to participants list
                     final participants = [currentUserId, ...selectedUserIds];
                     
-                    // Get the selected user's name as chat name
-                    String chatName = 'Chat';
-                    try {
-                      // Find the username in our loaded users list
-                      final selectedUser = _users.firstWhere(
-                        (u) => u['id'] == selectedUserIds[0],
-                        orElse: () => {'id': selectedUserIds[0], 'username': 'Chat'},
-                      );
-                      chatName = selectedUser['username'];
-                    } catch (e) {
-                      print('Error getting username: $e');
+                    // Determine chat name
+                    String chatName;
+                    if (isGroupChat) {
+                      // Use the provided name for group chats
+                      chatName = nameController.text.trim();
+                    } else {
+                      // Use the other user's name for individual chats
+                      try {
+                        final selectedUser = _users.firstWhere(
+                          (u) => u['id'] == selectedUserIds[0],
+                          orElse: () => {'id': selectedUserIds[0], 'username': 'Usuario'},
+                        );
+                        chatName = selectedUser['username'];
+                      } catch (e) {
+                        chatName = 'Chat';
+                        print('Error getting username: $e');
+                      }
                     }
                     
-                    // Create chat room with the other user's name
+                    // Create chat room
                     final room = await chatService.createChatRoom(
-                      chatName, // This will be replaced with the other user's name in the service
+                      chatName,
                       participants,
+                      isGroupChat ? 'Chat grupal' : null,
                     );
                     
                     if (room != null) {
@@ -355,7 +490,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         MaterialPageRoute(
                           builder: (context) => ChatRoomScreen(roomId: room.id),
                         ),
-                      );
+                      ).then((_) {
+                        // Reload chat rooms when returning from chat screen
+                        _loadChatRooms();
+                      });
                     } else {
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(

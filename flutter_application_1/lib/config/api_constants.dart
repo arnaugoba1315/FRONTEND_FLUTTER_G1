@@ -1,40 +1,40 @@
 class ApiConstants {
   // Base URL - adjust this to your actual backend URL
-  static const String baseUrl = 'http://localhost:3000/api';
+  static const String baseUrl = 'http://localhost:3000';
+  static const String apiPath = '/api';
   
   // Auth endpoints
-  static const String login = '$baseUrl/users/login';
-  static const String register = '$baseUrl/users/register';
+  static const String login = '$baseUrl$apiPath/users/login';
+  static const String register = '$baseUrl$apiPath/users/register';
   
   // User endpoints
-  static const String users = '$baseUrl/users';
-  static String user(String id) => '$baseUrl/users/$id';
-  static String userByUsername(String username) => '$baseUrl/users/username/$username';
-  static String searchUsers(String query) => '$baseUrl/users/search?query=$query';
-  static String toggleUserVisibility(String id) => '$baseUrl/users/$id/toggle-visibility';
+  static const String users = '$baseUrl$apiPath/users';
+  static String user(String id) => '$baseUrl$apiPath/users/$id';
+  static String userByUsername(String username) => '$baseUrl$apiPath/users/username/$username';
+  static String searchUsers(String query) => '$baseUrl$apiPath/users/search?query=$query';
+  static String toggleUserVisibility(String id) => '$baseUrl$apiPath/users/$id/toggle-visibility';
   
   // Activity endpoints
-  static const String activities = '$baseUrl/activities';
-  static String activity(String id) => '$baseUrl/activities/$id';
-  static String userActivities(String userId) => '$baseUrl/activities/user/$userId';
+  static const String activities = '$baseUrl$apiPath/activities';
+  static String activity(String id) => '$baseUrl$apiPath/activities/$id';
+  static String userActivities(String userId) => '$baseUrl$apiPath/activities/user/$userId';
   
   // Activity history endpoints
-  static const String activityHistory = '$baseUrl/activity-history';
-  static String activityHistoryByActivityId(String activityId) => '$baseUrl/activity-history/activity/$activityId';
+  static const String activityHistory = '$baseUrl$apiPath/activity-history';
+  static String activityHistoryByActivityId(String activityId) => '$baseUrl$apiPath/activity-history/activity/$activityId';
   
   // Chat endpoints
-  static const String chat = '$baseUrl/chat';
-  static String chatRooms = '$chat/rooms';
-  static String userChatRooms(String userId) => '$chat/rooms/user/$userId';
-  static String chatRoom(String id) => '$chat/rooms/$id';
-  static String chatMessages(String roomId) => '$chat/messages/$roomId';
-  static const String sendMessage = '$chat/messages';
-  static const String markMessagesRead = '$chat/messages/read';
+  static const String chatRooms = '$baseUrl$apiPath/chat/rooms';
+  static String userChatRooms(String userId) => '$baseUrl$apiPath/chat/rooms/user/$userId';
+  static String chatRoom(String id) => '$baseUrl$apiPath/chat/rooms/$id';
+  static String chatMessages(String roomId) => '$baseUrl$apiPath/chat/messages/$roomId';
+  static const String sendMessage = '$baseUrl$apiPath/chat/messages';
+  static const String markMessagesRead = '$baseUrl$apiPath/chat/messages/read';
   
   // Notification endpoints
-  static const String notifications = '$baseUrl/notifications';
-  static String userNotifications(String userId) => '$notifications/user/$userId';
-  static String markNotificationRead(String id) => '$notifications/$id/read';
-  static const String markAllNotificationsRead = '$notifications/read-all';
-  static String deleteUserNotifications(String userId) => '$notifications/user/$userId';
+  static const String notifications = '$baseUrl$apiPath/notifications';
+  static String userNotifications(String userId) => '$baseUrl$apiPath/notifications/user/$userId';
+  static String markNotificationRead(String id) => '$baseUrl$apiPath/notifications/$id/read';
+  static const String markAllNotificationsRead = '$baseUrl$apiPath/notifications/read-all';
+  static String deleteUserNotifications(String userId) => '$baseUrl$apiPath/notifications/user/$userId';
 }
