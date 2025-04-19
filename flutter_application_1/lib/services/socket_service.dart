@@ -268,7 +268,7 @@ class SocketService with ChangeNotifier {
     }
   }
 
-  // Enviar mensaje con mejor manejo de errores
+  // Enviar mensaje con mejor manejo de errores y preservando el ID
   void sendMessage(String roomId, String content, [String? messageId]) {
     if (_socketStatus != SocketStatus.connected) {
       print('No se puede enviar mensaje: no conectado (estado: $_socketStatus)');
@@ -282,23 +282,29 @@ class SocketService with ChangeNotifier {
     }
 
     try {
-      // Generar un ID único para el mensaje si no se proporciona
-      final id = messageId ?? 'msg_${DateTime.now().millisecondsSinceEpoch}_${_socket.id ?? 'nodeid'}';
+      // Asegurarse de tener un ID único para este mensaje
+      // Usar siempre el timestamp para garantizar unicidad
+      final uniqueTimestamp = DateTime.now().millisecondsSinceEpoch;
+      
+      // Si se proporciona un ID, usarlo (viene del chat_service para evitar duplicaciones)
+      // si no, generar uno nuevo usando el timestamp único
+      final id = messageId ?? 'msg_${uniqueTimestamp}_${_socket.id ?? 'unknown'}_${DateTime.now().microsecond}';
       
       final userId = _socket.auth['userId'] as String? ?? '';
       final username = _socket.auth['username'] as String? ?? 'Usuario';
       
       // Crear objeto de mensaje completo
       final message = {
-        'id': id,
-        'roomId': roomId,
-        'senderId': userId,
-        'senderName': username,
-        'content': content,
-        'timestamp': DateTime.now().toIso8601String(),
+        'id': id,         // ID único para este mensaje
+        'roomId': roomId, // ID de la sala
+        'senderId': userId, // Quién envía el mensaje
+        'senderName': username, // Nombre legible del remitente
+        'content': content, // Contenido del mensaje
+        'timestamp': DateTime.now().toIso8601String(), // Fecha/hora exacta
       };
 
-      print('Enviando mensaje a través de Socket.IO - Sala: $roomId, Contenido: $content');
+      print('Enviando mensaje a través de Socket.IO - Sala: $roomId, ID: $id');
+      // Emitir el evento una sola vez para evitar duplicación
       _socket.emit('send_message', message);
     } catch (e) {
       print('Error al enviar mensaje por Socket.IO: $e');

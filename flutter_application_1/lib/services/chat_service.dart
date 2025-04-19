@@ -114,7 +114,6 @@ class ChatService with ChangeNotifier {
     }
   }
 
-  // Manejar nuevo mensaje recibido
   void _handleNewMessage(dynamic data) {
     try {
       print('Procesando mensaje recibido: $data');
@@ -146,6 +145,9 @@ class ChatService with ChangeNotifier {
       // Añadir mensaje a la lista
       _messages[roomId]!.add(message);
       
+      // Guardar mensajes localmente para persistencia
+      _saveLocalMessages(roomId, _messages[roomId]!);
+      
       // Actualizar último mensaje en la sala de chat
       final index = _chatRooms.indexWhere((room) => room.id == roomId);
       if (index != -1) {
@@ -162,9 +164,9 @@ class ChatService with ChangeNotifier {
         // La sala no existe localmente, puede ser una nueva sala
         // Intentar cargar las salas para asegurarnos de tener la más reciente
         print('Sala no encontrada localmente: $roomId. Intentando recargar salas...');
-        final authService = _socketService.socket.auth['userId'] as String? ?? '';
-        if (authService.isNotEmpty) {
-          loadChatRooms(authService);
+        final userId = _socketService.socket.auth['userId'] as String? ?? '';
+        if (userId.isNotEmpty) {
+          loadChatRooms(userId);
         }
       }
       
@@ -234,19 +236,69 @@ class ChatService with ChangeNotifier {
   void _mergeRooms(List<ChatRoom> newRooms) {
     print('Combinando ${newRooms.length} salas nuevas con ${_chatRooms.length} salas existentes');
     
+    // Eliminar todas las salas de prueba o vacías
+    _chatRooms.removeWhere((room) => 
+      room.name == 'Chat de prueba' || 
+      room.name == 'Sala de prueba' ||
+      room.name == 'Test room' ||
+      room.name == 'Chat Room' ||
+      room.name.isEmpty
+    );
+    
+    // Limpiar los mensajes predeterminados
+    _messages.forEach((roomId, messages) {
+      messages.removeWhere((message) => 
+        message.content.contains('Bienvenido a la sala') ||
+        message.content.contains('Mensaje de prueba') ||
+        message.content.contains('Test message')
+      );
+    });
+    
+    final currentUserId = _socketService.socket.auth['userId'] as String? ?? '';
+    
     for (final newRoom in newRooms) {
+      // Si es una sala individual (2 participantes), asegurarse de que el nombre es el del otro usuario
+      ChatRoom roomToAdd = newRoom;
+      
+      if (newRoom.participants.length == 2 && currentUserId.isNotEmpty) {
+        final otherUserId = newRoom.participants.firstWhere(
+          (id) => id != currentUserId,
+          orElse: () => ''
+        );
+        
+        if (otherUserId.isNotEmpty) {
+          // Si ya tenemos un usuario cargado con este ID en _userService.cache, usar su nombre
+          _userService.getUserById(otherUserId).then((otherUser) {
+            if (otherUser != null && otherUser.username.isNotEmpty) {
+              // Solo actualizar el nombre si es diferente
+              if (roomToAdd.name != otherUser.username) {
+                final index = _chatRooms.indexWhere((r) => r.id == newRoom.id);
+                if (index >= 0) {
+                  _chatRooms[index] = _chatRooms[index].copyWith(name: otherUser.username);
+                  _saveRooms();
+                  notifyListeners();
+                }
+              }
+            }
+          }).catchError((e) {
+            print('Error obteniendo usuario para renombrar sala: $e');
+          });
+        }
+      }
+      
       final existingIndex = _chatRooms.indexWhere((r) => r.id == newRoom.id);
       
       if (existingIndex >= 0) {
         // Actualizar sala existente preservando mensajes
         final existingRoom = _chatRooms[existingIndex];
-        _chatRooms[existingIndex] = newRoom.copyWith(
-          lastMessage: newRoom.lastMessage ?? existingRoom.lastMessage,
-          lastMessageTime: newRoom.lastMessageTime ?? existingRoom.lastMessageTime,
+        _chatRooms[existingIndex] = roomToAdd.copyWith(
+          name: existingRoom.name, // Preservar nombre existente para evitar sobrescribir nombres personalizados
+          lastMessage: roomToAdd.lastMessage ?? existingRoom.lastMessage,
+          lastMessageTime: roomToAdd.lastMessageTime ?? existingRoom.lastMessageTime,
         );
       } else {
         // Añadir nueva sala
-        _chatRooms.add(newRoom);
+        _chatRooms.add(roomToAdd);
       }
     }
     
@@ -260,8 +312,17 @@ class ChatService with ChangeNotifier {
     for (var roomData in data) {
       ChatRoom room = ChatRoom.fromJson(roomData);
       
-      // Para salas con exactamente 2 participantes, mostrar el nombre de la otra persona
+      // Ignorar salas de prueba
+      if (room.name == 'Chat de prueba' || 
+          room.name == 'Sala de prueba' || 
+          room.name == 'Test room' ||
+          room.name == 'Chat Room') {
+        continue;
+      }
+      
+      // Para salas con exactamente 2 participantes, mostrar el nombre del OTRO usuario
       if (room.participants.length == 2) {
+        // Encontrar el ID del otro usuario (no el actual)
         String otherUserId = room.participants.firstWhere(
           (id) => id != currentUserId, 
           orElse: () => ''
@@ -271,7 +332,9 @@ class ChatService with ChangeNotifier {
           try {
             final otherUser = await _userService.getUserById(otherUserId);
             if (otherUser != null) {
-              // Usar el nombre del otro usuario como nombre de la sala
+              print('Ajustando nombre de sala ${room.id} para usuario $currentUserId: usando nombre "${otherUser.username}"');
+              
+              // Siempre usar el nombre del otro usuario como nombre de la sala
               room = room.copyWith(
                 name: otherUser.username,
               );
@@ -299,6 +362,15 @@ class ChatService with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
       
+      // Obtener el ID del usuario actual
+      final currentUserId = _socketService.socket.auth['userId'] as String? ?? '';
+      if (currentUserId.isEmpty) {
+        print('Error: No se pudo identificar el ID del usuario actual');
+        _isLoading = false;
+        notifyListeners();
+        return null;
+      }
+      
       // Verificar si ya existe una sala con estos participantes
       if (participants.length == 2) {
         final existingRoom = _chatRooms.firstWhere(
@@ -321,7 +393,29 @@ class ChatService with ChangeNotifier {
         }
       }
       
-      print('Creando nueva sala de chat para ${participants.length} participantes');
+      // Si es un chat individual (1-a-1), siempre usar el nombre del otro usuario
+      String chatName = name;
+      if (participants.length == 2) {
+        // Encontrar el ID del otro usuario (no el actual)
+        String otherUserId = participants.firstWhere(
+          (id) => id != currentUserId,
+          orElse: () => ''
+        );
+        
+        if (otherUserId.isNotEmpty) {
+          try {
+            final otherUser = await _userService.getUserById(otherUserId);
+            if (otherUser != null) {
+              chatName = otherUser.username;
+              print('Usando el nombre del otro usuario para el chat: ${otherUser.username}');
+            }
+          } catch (e) {
+            print('Error obteniendo datos de usuario para nombre de sala: $e');
+          }
+        }
+      }
+      
+      print('Creando nueva sala de chat "${chatName}" para ${participants.length} participantes');
       final uri = Uri.parse(ApiConstants.chatRooms);
       
       try {
@@ -329,7 +423,7 @@ class ChatService with ChangeNotifier {
           uri,
           headers: {'Content-Type': 'application/json'},
           body: json.encode({
-            'name': name,
+            'name': chatName, // Usar el nombre ajustado
             'participants': participants,
             'description': description,
           }),
@@ -341,19 +435,9 @@ class ChatService with ChangeNotifier {
           final roomData = json.decode(response.body);
           print('Datos de sala creada: $roomData');
           
-          // Para chats 1-a-1, reemplazar el nombre de la sala con el nombre del otro usuario
+          // Asegurarnos de que el nombre se mantiene como el del otro usuario en caso de chat individual
           if (participants.length == 2) {
-            final currentUserId = participants[0]; // Suponiendo que el primer participante es el usuario actual
-            String otherUserId = participants[1]; // El otro usuario
-            
-            try {
-              final otherUser = await _userService.getUserById(otherUserId);
-              if (otherUser != null) {
-                roomData['name'] = otherUser.username;
-              }
-            } catch (e) {
-              print('Error obteniendo datos de usuario para nueva sala de chat: $e');
-            }
+            roomData['name'] = chatName;
           }
           
           final room = ChatRoom.fromJson(roomData);
@@ -369,57 +453,44 @@ class ChatService with ChangeNotifier {
           return room;
         } else {
           print('Error creando sala de chat: ${response.statusCode} - ${response.body}');
-          
-          // Para propósitos de desarrollo, crear una sala ficticia
-          final tempId = DateTime.now().millisecondsSinceEpoch.toString();
-          print('Creando sala temporal con ID: $tempId');
-          
-          final createdRoom = ChatRoom(
-            id: tempId,
-            name: name,
-            description: description,
-            participants: participants,
-            createdAt: DateTime.now(),
-            lastMessage: null,
-            lastMessageTime: null,
-          );
-          
-          _chatRooms.add(createdRoom);
-          
-          // Guardar salas actualizadas
-          _saveRooms();
-          
+          _isLoading = false;
           notifyListeners();
-          return createdRoom;
+          return null;
         }
       } catch (e) {
         print('Error al crear sala de chat: $e');
-        
-        // Crear una sala local para pruebas
-        final tempId = DateTime.now().millisecondsSinceEpoch.toString();
-        print('Creando sala temporal con ID: $tempId (después de error)');
-        
-        final createdRoom = ChatRoom(
-          id: tempId,
-          name: name,
-          description: description,
-          participants: participants,
-          createdAt: DateTime.now(),
-          lastMessage: null,
-          lastMessageTime: null,
-        );
-        
-        _chatRooms.add(createdRoom);
-        
-        // Guardar salas actualizadas
-        _saveRooms();
-        
+        _isLoading = false;
         notifyListeners();
-        return createdRoom;
+        return null;
       }
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  // Actualizar el nombre de la sala para que muestre el nombre del otro usuario
+  void _updateRoomNameForCurrentUser(String roomId) {
+    final currentUserId = _socketService.socket.auth['userId'] as String? ?? '';
+    if (currentUserId.isEmpty) return;
+
+    final roomIndex = _chatRooms.indexWhere((room) => room.id == roomId);
+    if (roomIndex != -1) {
+      final room = _chatRooms[roomIndex];
+      if (room.participants.length == 2) {
+        final otherUserId = room.participants.firstWhere((id) => id != currentUserId, orElse: () => '');
+        if (otherUserId.isNotEmpty) {
+          _userService.getUserById(otherUserId).then((otherUser) {
+            if (otherUser != null && otherUser.username.isNotEmpty) {
+              _chatRooms[roomIndex] = room.copyWith(name: otherUser.username);
+              _saveRooms();
+              notifyListeners();
+            }
+          }).catchError((e) {
+            print('Error obteniendo usuario para actualizar nombre de sala: $e');
+          });
+        }
+      }
     }
   }
 
@@ -439,12 +510,14 @@ class ChatService with ChangeNotifier {
       print('Uniéndose a la sala: $roomId');
       _socketService.joinChatRoom(roomId);
       
-      // Si ya tenemos mensajes para esta sala, usarlos
-      if (_messages.containsKey(roomId) && _messages[roomId]!.isNotEmpty) {
-        print('Usando mensajes en caché para sala: $roomId (${_messages[roomId]!.length} mensajes)');
-        _isLoading = false;
-        notifyListeners();
-        return;
+      // Actualizar el nombre de la sala para que muestre el nombre del otro usuario
+      _updateRoomNameForCurrentUser(roomId);
+      
+      // Intentar cargar mensajes locales primero
+      final localMessages = await _loadLocalMessages(roomId);
+      if (localMessages.isNotEmpty) {
+        print('Usando ${localMessages.length} mensajes desde almacenamiento local para sala $roomId');
+        _messages[roomId] = localMessages;
       }
       
       final uri = Uri.parse(ApiConstants.chatMessages(roomId));
@@ -456,26 +529,98 @@ class ChatService with ChangeNotifier {
           final List<dynamic> data = json.decode(response.body);
           print('Mensajes recibidos para sala $roomId: ${data.length}');
           
-          final messages = data.map((m) => Message.fromJson(m)).toList();
+          // Solo filtrar mensajes de sistema, no los mensajes regulares
+          final filteredData = data.where((m) => 
+            m['content'] != null && 
+            !(m['content'].toString().contains("Bienvenido") && 
+              m['content'].toString().contains("sala"))
+          ).toList();
           
-          // Añadir todos los IDs de mensajes al conjunto procesado para evitar duplicados
-          for (var message in messages) {
-            _processedMessageIds.add(message.id);
+          print('Después de filtrado: ${filteredData.length} mensajes');
+          
+          // Crear instancias de Message a partir de los datos JSON
+          final messages = filteredData.map((m) => Message.fromJson(m)).toList();
+          
+          // Inicializar la lista de mensajes para esta sala solo si no tenemos mensajes locales
+          // o si tenemos más mensajes del servidor
+          if (!_messages.containsKey(roomId) || 
+              _messages[roomId]!.isEmpty ||
+              messages.length > _messages[roomId]!.length) {
+            
+            _messages[roomId] = [];
+            
+            // Añadir todos los IDs de mensajes al conjunto procesado para evitar duplicados
+            _processedMessageIds.clear(); // Limpiar para evitar mantener mensajes antiguos
+            
+            // Añadir mensajes a la lista y registrar sus IDs
+            for (var message in messages) {
+              _messages[roomId]!.add(message);
+              _processedMessageIds.add(message.id);
+            }
+            
+            // Guardar mensajes localmente
+            _saveLocalMessages(roomId, _messages[roomId]!);
           }
-          
-          _messages[roomId] = messages;
         } else {
           print('Error cargando mensajes: ${response.statusCode} - ${response.body}');
-          // Inicializar con un array vacío para evitar errores
-          _messages[roomId] = [];
+          // Si no hay mensajes locales, inicializar con array vacío
+          if (!_messages.containsKey(roomId)) {
+            _messages[roomId] = [];
+          }
         }
       } catch (e) {
         print('Error al hacer la solicitud de mensajes: $e');
-        _messages[roomId] = [];
+        // Si no hay mensajes locales, inicializar con array vacío
+        if (!_messages.containsKey(roomId)) {
+          _messages[roomId] = [];
+        }
       }
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+  
+  // Guardar mensajes localmente
+  Future<void> _saveLocalMessages(String roomId, List<Message> messages) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final messagesJson = messages.map((msg) => json.encode(msg.toJson())).toList();
+      await prefs.setStringList('messages_$roomId', messagesJson);
+      print('Guardados ${messages.length} mensajes localmente para sala $roomId');
+    } catch (e) {
+      print('Error guardando mensajes localmente: $e');
+    }
+  }
+  
+  // Cargar mensajes desde almacenamiento local
+  Future<List<Message>> _loadLocalMessages(String roomId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final messagesJson = prefs.getStringList('messages_$roomId');
+      
+      if (messagesJson == null || messagesJson.isEmpty) {
+        return [];
+      }
+      
+      final messages = messagesJson.map((msgStr) {
+        try {
+          return Message.fromJson(json.decode(msgStr));
+        } catch (e) {
+          print('Error parseando mensaje: $e');
+          return null;
+        }
+      }).where((msg) => msg != null).cast<Message>().toList();
+      
+      // Registrar IDs para evitar duplicados
+      for (var message in messages) {
+        _processedMessageIds.add(message.id);
+      }
+      
+      return messages;
+    } catch (e) {
+      print('Error cargando mensajes localmente: $e');
+      return [];
     }
   }
 
@@ -484,9 +629,6 @@ class ChatService with ChangeNotifier {
       print('No se puede enviar mensaje: roomId o contenido vacío');
       return;
     }
-    
-    // Generar un ID único para el mensaje que estamos enviando
-    final messageId = 'msg_${DateTime.now().millisecondsSinceEpoch}_${_socketService.socket.id}';
     
     // Tomar los datos del usuario del socketService
     final senderId = _socketService.socket.auth['userId'] as String? ?? '';
@@ -497,7 +639,11 @@ class ChatService with ChangeNotifier {
       return;
     }
     
-    // Añadir mensaje local temporalmente para mejor UX
+    // Generar un ID único para el mensaje que estamos enviando
+    final uniqueTimestamp = DateTime.now().millisecondsSinceEpoch;
+    final messageId = 'msg_${uniqueTimestamp}_${senderId}_${DateTime.now().microsecond}';
+    
+    // Crear el mensaje localmente
     final temporaryMessage = Message(
       id: messageId,
       senderId: senderId,
@@ -508,13 +654,18 @@ class ChatService with ChangeNotifier {
       isRead: false,
     );
     
+    // Registrar este ID para evitar duplicados cuando regrese desde el servidor
+    _processedMessageIds.add(messageId);
+    
     // Añadir a la lista de mensajes locales
     if (!_messages.containsKey(roomId)) {
       _messages[roomId] = [];
     }
     
     _messages[roomId]!.add(temporaryMessage);
-    _processedMessageIds.add(messageId); // Para evitar duplicados cuando llegue el eco
+    
+    // Guardar mensajes localmente para persistencia
+    _saveLocalMessages(roomId, _messages[roomId]!);
     
     // Actualizar último mensaje en la sala de chat
     final index = _chatRooms.indexWhere((room) => room.id == roomId);
@@ -531,9 +682,9 @@ class ChatService with ChangeNotifier {
     // Notificar cambios para actualizar la UI inmediatamente
     notifyListeners();
     
-    // Enviar mensaje a través de Socket.IO
-    print('Enviando mensaje a través de Socket.IO - Sala: $roomId, Contenido: $content, De: $senderName ($senderId)');
-    _socketService.sendMessage(roomId, content);
+    // Enviar mensaje a través de Socket.IO con el ID único
+    print('Enviando mensaje a través de Socket.IO - Sala: $roomId, ID: $messageId');
+    _socketService.sendMessage(roomId, content, messageId);
   }
 
   // Enviar estado "escribiendo..."
