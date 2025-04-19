@@ -43,9 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
           socketService
         );
 
-        if (success) {
+        if (success != null) {
           // Navegar según el rol del usuario
-          if (authService.isAdmin) {
+          if (authService.isAdmin == true) {
             Navigator.pushReplacementNamed(context, AppRoutes.admin);
           } else {
             Navigator.pushReplacementNamed(context, AppRoutes.userHome);

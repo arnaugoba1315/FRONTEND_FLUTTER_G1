@@ -49,6 +49,8 @@ class SocketService with ChangeNotifier {
             .setTransports(['websocket']) // Usar solo websocket, más estable
             .disableAutoConnect()
             .enableForceNew()
+            .enableForceNewConnection() // Forzar nueva conexión
+            .enableReconnection() // Habilitar reconexión automática
             .setTimeout(10000) // Aumentar timeout a 10 segundos
             .build(),
       );
@@ -81,6 +83,14 @@ class SocketService with ChangeNotifier {
       print('Socket.IO connection error: $data');
       _socketStatus = SocketStatus.disconnected;
       notifyListeners();
+      
+      // Intento de reconexión automática después de un error
+      Future.delayed(Duration(seconds: 3), () {
+        if (_socketStatus == SocketStatus.disconnected) {
+          print('Intentando reconexión automática...');
+          _socket.connect();
+        }
+      });
     });
 
     _socket.onConnectTimeout((_) {
@@ -123,6 +133,27 @@ class SocketService with ChangeNotifier {
           }
         });
       }
+    });
+    
+    // Agregar un evento de reconexión para manejar reconexiones
+    _socket.on('reconnect', (_) {
+      print('Socket.IO reconnected');
+      
+      // Volver a unirse a todas las salas anteriores si es necesario
+      // (Esto requeriría mantener un registro de las salas activas)
+    });
+    
+    // Agregar eventos adicionales para depuración
+    _socket.on('connect_error', (error) {
+      print('Socket.IO connect_error: $error');
+    });
+    
+    _socket.on('reconnect_attempt', (attempt) {
+      print('Socket.IO reconnect attempt: $attempt');
+    });
+    
+    _socket.on('reconnect_failed', (_) {
+      print('Socket.IO reconnect failed');
     });
   }
 
@@ -170,6 +201,11 @@ class SocketService with ChangeNotifier {
         if (_socketStatus == SocketStatus.connecting) {
           print('Timeout de conexión Socket.IO');
           _socketStatus = SocketStatus.disconnected;
+          
+          // Intento adicional de reconexión después del timeout
+          print('Intentando reconexión después de timeout...');
+          _socket.connect();
+          
           notifyListeners();
         }
       });
@@ -200,10 +236,30 @@ class SocketService with ChangeNotifier {
   // Unirse a una sala de chat
   void joinChatRoom(String roomId) {
     if (_socketStatus != SocketStatus.connected) {
-      print('Cannot join room: not connected');
+      print('Cannot join room: not connected (current status: $_socketStatus)');
+      
+      // Intentar reconectar si no está conectado
+      if (_socketStatus == SocketStatus.disconnected && _socket.auth != null) {
+        print('Intentando reconectar antes de unirse a la sala...');
+        _socket.connect();
+        
+        // Intentar unirse después de una reconexión exitosa
+        Future.delayed(Duration(seconds: 2), () {
+          if (_socketStatus == SocketStatus.connected) {
+            _emit_join_room(roomId);
+          } else {
+            print('No se pudo unir a la sala $roomId - sin conexión');
+          }
+        });
+      }
       return;
     }
 
+    _emit_join_room(roomId);
+  }
+  
+  // Método auxiliar para emitir join_room
+  void _emit_join_room(String roomId) {
     try {
       print('Joining chat room: $roomId');
       _socket.emit('join_room', roomId);
@@ -212,10 +268,16 @@ class SocketService with ChangeNotifier {
     }
   }
 
-  // Enviar mensaje
+  // Enviar mensaje con mejor manejo de errores
   void sendMessage(String roomId, String content, [String? messageId]) {
     if (_socketStatus != SocketStatus.connected) {
       print('No se puede enviar mensaje: no conectado (estado: $_socketStatus)');
+      
+      // Intentar reconectar si no está conectado
+      if (_socketStatus == SocketStatus.disconnected && _socket.auth != null) {
+        print('Intentando reconectar antes de enviar mensaje...');
+        _socket.connect();
+      }
       return;
     }
 
@@ -223,10 +285,15 @@ class SocketService with ChangeNotifier {
       // Generar un ID único para el mensaje si no se proporciona
       final id = messageId ?? 'msg_${DateTime.now().millisecondsSinceEpoch}_${_socket.id ?? 'nodeid'}';
       
+      final userId = _socket.auth['userId'] as String? ?? '';
+      final username = _socket.auth['username'] as String? ?? 'Usuario';
+      
       // Crear objeto de mensaje completo
       final message = {
         'id': id,
         'roomId': roomId,
+        'senderId': userId,
+        'senderName': username,
         'content': content,
         'timestamp': DateTime.now().toIso8601String(),
       };

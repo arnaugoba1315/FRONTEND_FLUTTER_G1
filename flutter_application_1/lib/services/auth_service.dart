@@ -9,17 +9,17 @@ import 'package:flutter_application_1/services/socket_service.dart';
 class AuthService with ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
-  bool _isAdmin = false;
   bool _isLoading = false;
   String _error = '';
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
-  bool get isAdmin => _isAdmin;
   bool get isLoading => _isLoading;
   String get error => _error;
 
-  // Inicializar el servicio y verificar si hay un usuario almacenado
+  bool? get isAdmin => null;
+
+  // Initialize service and check for stored user
   Future<void> initialize() async {
     _isLoading = true;
     notifyListeners();
@@ -29,27 +29,25 @@ class AuthService with ChangeNotifier {
     
     if (userData != null) {
       try {
-        print("Datos de usuario guardados: $userData");
+        print("Stored user data: $userData");
         final parsedJson = json.decode(userData);
         
-        // Verificar si hay un problema con el ID
         if (parsedJson['_id'] == null && parsedJson['id'] == null) {
-          print("ADVERTENCIA: No se encontró ID de usuario en los datos guardados");
+          print("WARNING: No user ID found in stored data");
         }
         
         final user = User.fromJson(parsedJson);
         
         if (user.id.isEmpty) {
-          print("ERROR: ID de usuario vacío después de parsear los datos guardados");
-          await logout(); // Limpiar datos inconsistentes
+          print("ERROR: Empty user ID after parsing stored data");
+          await logout();
         } else {
           _currentUser = user;
           _isLoggedIn = true;
-          _isAdmin = user.role == 'admin';
-          print("Usuario inicializado correctamente con ID: ${user.id}");
+          print("User initialized successfully with ID: ${user.id}");
         }
       } catch (e) {
-        print('Error al analizar datos de usuario almacenados: $e');
+        print('Error parsing stored user data: $e');
         await logout();
       }
     }
@@ -58,8 +56,7 @@ class AuthService with ChangeNotifier {
     notifyListeners();
   }
 
-  // Iniciar sesión de usuario
-  Future<bool> login(String username, String password, SocketService socketService) async {
+  Future<User?> login(String username, String password, SocketService socketService) async {
     _isLoading = true;
     _error = '';
     notifyListeners();
@@ -74,78 +71,68 @@ class AuthService with ChangeNotifier {
         }),
       );
 
-      print("Respuesta del servidor (login): ${response.body}");
+      print("Server response (login): ${response.body}");
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         
         if (data['user'] != null) {
-          // Verificar si hay ID en la respuesta
           final userData = data['user'];
           
           if (userData['_id'] == null && userData['id'] == null) {
-            print("ERROR: No se encontró _id o id en la respuesta del servidor");
-            _error = 'Error en la respuesta del servidor: falta ID de usuario';
+            print("ERROR: No _id or id found in server response");
+            _error = 'Server response error: missing user ID';
             _isLoading = false;
             notifyListeners();
-            return false;
+            return null;
           }
           
-          // Almacenar el usuario en memoria
           final user = User.fromJson(userData);
           
           if (user.id.isEmpty) {
-            print("Error: ID de usuario vacío después del inicio de sesión");
-            _error = 'Error en la autenticación: ID de usuario vacío';
+            print("Error: Empty user ID after login");
+            _error = 'Authentication error: empty user ID';
             _isLoading = false;
             notifyListeners();
-            return false;
+            return null;
           }
           
-          print("Usuario creado correctamente con ID: ${user.id}");
+          print("User created successfully with ID: ${user.id}");
           
           _currentUser = user;
           _isLoggedIn = true;
-          _isAdmin = user.role == 'admin';
           
-          // Almacenar datos de usuario en SharedPreferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user', json.encode(userData));
           
-          // Primero desconectar si ya estaba conectado
           socketService.disconnect();
-          
-          // Esperar un momento antes de intentar conectar para evitar errores
           await Future.delayed(Duration(milliseconds: 500));
-          
-          // Conectar Socket.IO
           socketService.connect(user);
           
           _isLoading = false;
           notifyListeners();
-          return true;
+          return user;
         } else {
-          print("ERROR: No se encontró objeto 'user' en la respuesta del servidor");
-          _error = 'Formato de respuesta del servidor inválido';
+          print("ERROR: No 'user' object found in server response");
+          _error = 'Invalid server response format';
         }
       } else {
-        print("ERROR: Código de estado HTTP ${response.statusCode}");
-        _error = 'Credenciales inválidas';
+        print("ERROR: HTTP status code ${response.statusCode}");
+        _error = 'Invalid credentials';
       }
       
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
     } catch (e) {
-      print('Error de conexión: $e');
-      _error = 'Error de conexión: $e';
+      print('Connection error: $e');
+      _error = 'Connection error: $e';
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
     }
   }
 
-  // Registrar usuario
   Future<bool> register(String username, String email, String password) async {
     _isLoading = true;
     _error = '';
@@ -167,25 +154,21 @@ class AuthService with ChangeNotifier {
       
       return response.statusCode == 201;
     } catch (e) {
-      _error = 'Error de registro: $e';
+      _error = 'Registration error: $e';
       _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
-  // Cerrar sesión de usuario
   Future<void> logout([SocketService? socketService]) async {
-    // Desconectar Socket.IO si se proporciona
     if (socketService != null) {
       socketService.disconnect();
     }
     
     _currentUser = null;
     _isLoggedIn = false;
-    _isAdmin = false;
     
-    // Eliminar datos de usuario almacenados
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user');
     

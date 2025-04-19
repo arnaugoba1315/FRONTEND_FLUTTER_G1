@@ -96,16 +96,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     if (currentUser == null) return;
     
     try {
+      print('Cargando detalles de sala: ${widget.roomId}');
+      
       // Find this room in the chat service
       final room = chatService.chatRooms.firstWhere(
         (room) => room.id == widget.roomId,
-        orElse: () => ChatRoom(id: '', name: '', participants: [], createdAt: DateTime.now()),
+        orElse: () => ChatRoom(id: widget.roomId, name: 'Chat', participants: [], createdAt: DateTime.now()),
       );
       
       setState(() {
         _currentRoom = room;
         _roomTitle = room.name.isNotEmpty ? room.name : 'Chat';
       });
+      
+      print('Detalles de sala cargados: ${_roomTitle}');
     } catch (e) {
       print('Error loading room details: $e');
     }
@@ -116,6 +120,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     final authService = Provider.of<AuthService>(context, listen: false);
     
     try {
+      print('Cargando mensajes para sala: ${widget.roomId}');
+      
       // Cargar mensajes para esta sala
       await chatService.loadMessages(widget.roomId);
 
@@ -128,6 +134,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
       if (_isAtBottom) {
         _scrollToBottom();
       }
+      
+      print('Mensajes cargados correctamente');
     } catch (e) {
       print('Error loading messages: $e');
     }
@@ -151,7 +159,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     final messageText = _messageController.text.trim();
     
     if (messageText.isEmpty) return;
-
+    
+    print('Enviando mensaje a sala ${widget.roomId}: $messageText');
+    
+    // Send message using chat service
     chatService.sendMessage(widget.roomId, messageText);
     _messageController.clear();
     
@@ -178,7 +189,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     final userTyping = Provider.of<SocketService>(context).userTyping;
     
     // Get messages for this room
-    final messages = chatService.currentMessages;
+    final messages = chatService.currentRoomId == widget.roomId 
+        ? chatService.currentMessages 
+        : [];
 
     return Scaffold(
       appBar: AppBar(
@@ -186,6 +199,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(_roomTitle),
+            Text(
+              'Room ID: ${widget.roomId}',
+              style: TextStyle(fontSize: 10, color: Colors.white70),
+            ),
             if (_currentRoom != null && _currentRoom!.participants.length > 2)
               Text(
                 '${_currentRoom!.participants.length} participantes',
@@ -476,7 +493,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ID: ${_currentRoom!.id}'),
+            Text('ID: ${widget.roomId}'),
             const SizedBox(height: 8),
             Text('Participantes: ${_currentRoom!.participants.length}'),
             const SizedBox(height: 8),
@@ -517,6 +534,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
               Navigator.pop(context); // Cerrar diálogo
               
               final chatService = Provider.of<ChatService>(context, listen: false);
+              
+              // Delete room
               chatService.deleteChatRoom(widget.roomId);
               
               Navigator.pop(context); // Volver a la lista de chats
