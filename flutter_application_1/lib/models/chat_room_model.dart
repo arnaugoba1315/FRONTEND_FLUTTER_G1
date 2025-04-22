@@ -6,6 +6,7 @@ class ChatRoom {
   final DateTime createdAt;
   final String? lastMessage;
   final DateTime? lastMessageTime;
+  final bool isGroup;
 
   ChatRoom({
     required this.id,
@@ -15,45 +16,34 @@ class ChatRoom {
     required this.createdAt,
     this.lastMessage,
     this.lastMessageTime,
+    this.isGroup = false,
   });
 
   factory ChatRoom.fromJson(Map<String, dynamic> json) {
-    // Safely extract the ID - first try '_id', then 'id', or use empty string as fallback
+    // Asegurar que obtenemos el ID correcto del servidor
     final String roomId = json['_id'] ?? json['id'] ?? '';
     
-    // Get the room name, with a meaningful default
-    String roomName = json['name'] ?? 'Chat Room';
+    String roomName = json['name'] ?? 'Chat';
     
-    // If the name is an ID-like string (long hex string), replace with generic name
-    if (roomName.length > 20 && RegExp(r'^[0-9a-f]+$').hasMatch(roomName)) {
-      roomName = 'Chat Room';
-    }
-    
-    // Process participants array properly
-    List<String> participantsList;
+    List<String> participantsList = [];
     if (json['participants'] is List) {
       participantsList = List<String>.from(
         (json['participants'] as List).map((item) {
-          // Handle if participants can be objects or strings
           if (item is Map) {
             return item['_id'] ?? item['id'] ?? '';
-          } else {
-            return item.toString();
           }
+          return item.toString();
         })
       );
-    } else {
-      participantsList = [];
     }
     
-    // Parse dates safely
     DateTime createdAtDate;
     try {
       createdAtDate = json['createdAt'] != null 
-        ? DateTime.parse(json['createdAt']) 
-        : DateTime.now();
+          ? DateTime.parse(json['createdAt']) 
+          : DateTime.now();
     } catch (e) {
-      print('Error parsing createdAt date: $e');
+      print('Error parsing createdAt: $e');
       createdAtDate = DateTime.now();
     }
     
@@ -62,10 +52,13 @@ class ChatRoom {
       try {
         lastMessageTimeDate = DateTime.parse(json['lastMessageTime']);
       } catch (e) {
-        print('Error parsing lastMessageTime date: $e');
+        print('Error parsing lastMessageTime: $e');
         lastMessageTimeDate = null;
       }
     }
+
+    // Determinar si es un grupo
+    bool isGroupChat = json['isGroup'] ?? participantsList.length > 2;
 
     return ChatRoom(
       id: roomId,
@@ -75,23 +68,23 @@ class ChatRoom {
       createdAt: createdAtDate,
       lastMessage: json['lastMessage'],
       lastMessageTime: lastMessageTimeDate,
+      isGroup: isGroupChat,
     );
   }
-  
-  // Add a method to convert to JSON
+
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      '_id': id, // Usar _id para consistencia con el servidor
       'name': name,
       'description': description,
       'participants': participants,
       'createdAt': createdAt.toIso8601String(),
       'lastMessage': lastMessage,
       'lastMessageTime': lastMessageTime?.toIso8601String(),
+      'isGroup': isGroup,
     };
   }
-  
-  // Create a copy with modified properties
+
   ChatRoom copyWith({
     String? id,
     String? name,
@@ -100,6 +93,7 @@ class ChatRoom {
     DateTime? createdAt,
     String? lastMessage,
     DateTime? lastMessageTime,
+    bool? isGroup,
   }) {
     return ChatRoom(
       id: id ?? this.id,
@@ -109,6 +103,7 @@ class ChatRoom {
       createdAt: createdAt ?? this.createdAt,
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      isGroup: isGroup ?? this.isGroup,
     );
   }
 }

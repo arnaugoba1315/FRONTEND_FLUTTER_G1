@@ -108,7 +108,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         });
         
         // Update auth service with new user data
-        final authService = Provider.of<AuthService>(context, listen: false);
+        Provider.of<AuthService>(context, listen: false);
         // This would typically include logic to update the stored user in the auth service
         
       } catch (e) {

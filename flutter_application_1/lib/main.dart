@@ -1,26 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/routes.dart';
-import 'package:flutter_application_1/screens/auth/login_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
 import 'package:flutter_application_1/services/chat_service.dart';
 
-
 void main() {
   runApp(
     MultiProvider(
       providers: [
+        // Servicio de autenticación
         ChangeNotifierProvider(create: (_) => AuthService()),
+        // Servicio de Socket.IO - depende del servicio de autenticación
         ChangeNotifierProvider(create: (_) => SocketService()),
+        // Servicio de chat - depende de Socket.IO
         ChangeNotifierProxyProvider<SocketService, ChatService>(
           create: (context) => ChatService(context.read<SocketService>()),
           update: (context, socketService, previous) => 
             previous ?? ChatService(socketService),
         ),
-        
       ],
-      child: MyApp(),
+      child: const MyApp(),
     ),
   );
 }
@@ -42,42 +42,34 @@ class _MyAppState extends State<MyApp> {
   }
   
   Future<void> _initializeServices() async {
-    // Initialize services
+    // Inicializar servicios
     final authService = Provider.of<AuthService>(context, listen: false);
     await authService.initialize();
     
-    // If user is logged in, initialize socket
+    // Si el usuario está autenticado, conectar Socket.IO
     if (authService.isLoggedIn && authService.currentUser != null) {
       final socketService = Provider.of<SocketService>(context, listen: false);
       socketService.connect(authService.currentUser);
-      
-      // Load notifications
-     
-    
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'EA Grup 1',
+      title: 'Chat App',
       navigatorKey: navigatorKey,
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
         scaffoldBackgroundColor: Colors.grey[100],
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white,
           elevation: 0,
-        ),
-        buttonTheme: const ButtonThemeData(
-          buttonColor: Colors.deepPurple,
-          textTheme: ButtonTextTheme.primary,
         ),
       ),
       debugShowCheckedModeBanner: false,
       initialRoute: AppRoutes.login,
       onGenerateRoute: AppRoutes.generateRoute,
-      home: LoginScreen(),
     );
   }
 }

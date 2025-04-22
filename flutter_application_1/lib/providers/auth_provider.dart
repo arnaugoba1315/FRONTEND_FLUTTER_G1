@@ -39,7 +39,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      _currentUser = (await _authService.login(username, password, SocketService())) as User?;
+      _currentUser = (await _authService.login(username, password, SocketService()));
       _isLoading = false;
       notifyListeners();
       return true;
