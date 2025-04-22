@@ -18,8 +18,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final UserService _userService = UserService();
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
+  bool _isLoading = false;
   bool _isInitialized = false;
   bool _isCreatingChat = false;
+  bool _showCreateForm = false;
 
   @override
   void initState() {
@@ -73,12 +75,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   // Cargar salas de chat
   Future<void> _loadChatRooms() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
     final authService = Provider.of<AuthService>(context, listen: false);
     final chatService = Provider.of<ChatService>(context, listen: false);
     
     if (authService.currentUser != null) {
       await chatService.loadChatRooms(authService.currentUser!.id);
     }
+    
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   @override
@@ -94,20 +104,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
           // Botón de actualizar
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadChatRooms,
+            onPressed: _isLoading ? null : _loadChatRooms,
             tooltip: 'Actualizar',
           ),
         ],
       ),
-      body: _isCreatingChat
+      body: _isLoading || chatService.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : chatService.isLoading
-              ? const Center(child: CircularProgressIndicator())
+          : _showCreateForm
+              ? _buildCreateChatForm()
               : chatService.chatRooms.isEmpty
                   ? _buildEmptyState()
                   : _buildChatRoomsList(chatService.chatRooms),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showNewChatDialog(context),
+        onPressed: _isLoading ? null : () => _showNewChatDialog(context),
         child: const Icon(Icons.add),
         tooltip: 'Nuevo chat',
       ),
@@ -139,6 +149,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Icon(statusIcon, color: statusColor),
+    );
+  }
+
+  // Formulario para crear chat (placeholder, se puede implementar posteriormente)
+  Widget _buildCreateChatForm() {
+    return const Center(
+      child: Text('Formulario de creación de chat'),
     );
   }
 
@@ -194,7 +211,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Color chatColor = room.isGroup ? Colors.blue : Colors.deepPurple;
     
     return Dismissible(
-      key: Key(room.id),
+      key: Key('room_${room.id}'), // Usar un Key único que incluya el tipo
       background: Container(
         color: Colors.red,
         alignment: Alignment.centerRight,
@@ -210,8 +227,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: const Text("Confirmar"),
-              content: const Text("¿Estás seguro de que quieres eliminar este chat?"),
+              title: const Text("Confirmar eliminación"),
+              content: const Text("¿Estás seguro de que quieres eliminar este chat? Esta acción no se puede deshacer y se perderán todos los mensajes."),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
@@ -219,23 +236,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text("Eliminar"),
+                  child: const Text("Eliminar", style: TextStyle(color: Colors.red)),
                 ),
               ],
             );
           },
         );
       },
-      onDismissed: (direction) {
+      onDismissed: (direction) async {
         final chatService = Provider.of<ChatService>(context, listen: false);
-        chatService.deleteChatRoom(room.id);
+        final success = await chatService.deleteChatRoom(room.id);
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Chat eliminado'),
-            action: SnackBarAction(
-              label: 'Deshacer',
-              onPressed: _loadChatRooms,
+            content: Text(success ? 'Chat eliminado' : 'Error al eliminar el chat'),
+            action: success ? null : SnackBarAction(
+              label: 'Reintentar',
+              onPressed: () => chatService.deleteChatRoom(room.id),
             ),
           ),
         );
@@ -288,31 +305,54 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 style: TextStyle(fontStyle: FontStyle.italic),
               ),
         trailing: room.lastMessageTime != null
-            ? Text(
-                _formatTime(room.lastMessageTime!),
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatTime(room.lastMessageTime!),
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: Colors.grey[400],
+                  ),
+                ],
               )
-            : null,
-       onTap: () async {
-  final chatService = Provider.of<ChatService>(context, listen: false);
-  await chatService.loadMessages(room.id);
-  
-  if (!mounted) return;
-  
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => ChatRoomScreen(roomId: room.id),
-    ),
-  ).then((_) async {
-    // Recargar datos al volver
-    await chatService.loadMessages(room.id);
-    await _loadChatRooms();
-  });
-},
+            : Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: Colors.grey[400],
+              ),
+        onTap: () async {
+          final chatService = Provider.of<ChatService>(context, listen: false);
+          setState(() {
+            _isLoading = true;
+          });
+          
+          await chatService.loadMessages(room.id);
+          
+          if (!mounted) return;
+          
+          setState(() {
+            _isLoading = false;
+          });
+          
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatRoomScreen(roomId: room.id),
+            ),
+          ).then((_) async {
+            // Recargar datos al volver
+            await _loadChatRooms();
+          });
+        },
       ),
     );
   }
