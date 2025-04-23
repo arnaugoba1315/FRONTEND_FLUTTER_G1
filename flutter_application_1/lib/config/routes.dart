@@ -3,7 +3,6 @@ import 'package:flutter_application_1/screens/auth/login_screen.dart';
 import 'package:flutter_application_1/screens/auth/register_screen.dart';
 import 'package:flutter_application_1/screens/user/user_home.dart';
 import 'package:flutter_application_1/screens/user/user_profile.dart';
-import 'package:flutter_application_1/screens/admin/backoffice_screen.dart';
 import 'package:flutter_application_1/screens/chat/chat_list.dart';
 import 'package:flutter_application_1/screens/chat/chat_room.dart';
 
@@ -28,8 +27,7 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const UserHomeScreen());
       case userProfile:
         return MaterialPageRoute(builder: (_) => const UserProfileScreen());
-      case admin:
-        return MaterialPageRoute(builder: (_) => const BackofficeScreen());
+
       case chatList:
         return MaterialPageRoute(builder: (_) => const ChatListScreen());
       case chatRoom:
