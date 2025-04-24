@@ -69,23 +69,30 @@ class AuthService with ChangeNotifier {
         }
         
         // Parse user data
-        final parsedJson = json.decode(userData);
-        print("Attempting to parse stored user data: $parsedJson");
-        
-        // Verificar si hay ID antes de crear el usuario
-        if (!parsedJson.containsKey('_id') && !parsedJson.containsKey('id')) {
-          print("ADVERTENCIA: No se encontró ID de usuario en los datos almacenados");
-        }
-        
-        final user = User.fromJson(parsedJson);
-        
-        if (user.id.isEmpty) {
-          print("ERROR: ID de usuario vacío después de analizar los datos almacenados");
+        try {
+          final parsedJson = json.decode(userData);
+          print("Attempting to parse stored user data: $parsedJson");
+          
+          // Verificar si hay ID antes de crear el usuario
+          if (!parsedJson.containsKey('_id') && !parsedJson.containsKey('id')) {
+            print("ADVERTENCIA: No se encontró ID de usuario en los datos almacenados");
+          }
+          
+          final user = User.fromJson(parsedJson);
+          
+          if (user.id.isEmpty) {
+            print("ERROR: ID de usuario vacío después de analizar los datos almacenados");
+            await logout();
+          } else {
+            _currentUser = user;
+            _isLoggedIn = true;
+            print("Usuario inicializado correctamente con ID: ${user.id}");
+            // Imprimir datos completos del usuario para debug
+            print("Datos completos del usuario: ${json.encode(user.toJson())}");
+          }
+        } catch (e) {
+          print('Error parsing user data: $e');
           await logout();
-        } else {
-          _currentUser = user;
-          _isLoggedIn = true;
-          print("Usuario inicializado correctamente con ID: ${user.id}");
         }
       } catch (e) {
         print('Error analyzing stored data: $e');
@@ -155,6 +162,7 @@ class AuthService with ChangeNotifier {
           }
           
           print("Usuario creado exitosamente con ID: ${user.id}");
+          print("Bio: ${user.bio}, ProfilePicture: ${user.profilePicture != null}");
           
           _currentUser = user;
           _isLoggedIn = true;
@@ -293,24 +301,26 @@ class AuthService with ChangeNotifier {
       return false;
     }
   }
-void updateCurrentUser(User updatedUser) {
-  _currentUser = updatedUser;
   
-  // Also update in shared preferences for persistence
-  _saveUserData(updatedUser);
-  notifyListeners();
-}
-
-// Add a helper method to save user data
-Future<void> _saveUserData(User user) async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user', json.encode(user.toJson()));
-    print("User data updated in local storage");
-  } catch (e) {
-    print("Error saving user data: $e");
+  void updateCurrentUser(User updatedUser) {
+    _currentUser = updatedUser;
+    
+    // Also update in shared preferences for persistence
+    _saveUserData(updatedUser);
+    notifyListeners();
   }
-}
+
+  // Add a helper method to save user data
+  Future<void> _saveUserData(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(user.toJson()));
+      print("User data updated in local storage");
+    } catch (e) {
+      print("Error saving user data: $e");
+    }
+  }
+  
   Future<void> logout([SocketService? socketService]) async {
     try {
       // Llamar a la API de logout si tenemos un token de acceso

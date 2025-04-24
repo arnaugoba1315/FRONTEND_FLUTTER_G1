@@ -68,15 +68,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // First try to get the user from the auth service
       final authService = Provider.of<AuthService>(context, listen: false);
       
+      // Agregado: Log para depuración
+      print("Cargando datos de usuario...");
+      
       User? user;
       
       // If we have a current user, use that directly
       if (authService.currentUser != null) {
         user = authService.currentUser;
+        // Agregado: Log para depuración
+        print("Usando usuario del auth service con ID: ${user?.id}");
+        print("Bio: ${user?.bio}, ProfilePicture: ${user?.profilePicture != null}");
       } else {
         // Fallback to fetch from API if needed
-        // This should now handle email IDs properly with our enhanced services
+        print("No se encontró usuario en auth service, intentando con API...");
         user = await _userService.getUserById(authService.currentUser?.id ?? '');
+        // Agregado: Log para depuración
+        print("Usuario obtenido de API con ID: ${user?.id}");
       }
       
       if (user != null) {
@@ -86,17 +94,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _emailController.text = user.email;
           _bioController.text = user.bio ?? '';
           _profilePictureController.text = user.profilePicture ?? '';
+          
+          // Agregado: Log para depuración
+          print("Datos cargados en controladores:");
+          print("Username: ${_usernameController.text}");
+          print("Email: ${_emailController.text}");
+          print("Bio: ${_bioController.text}");
+          print("ProfilePicture: ${_profilePictureController.text}");
         });
       } else {
         setState(() {
-          _errorMessage = 'User data not available';
+          _errorMessage = 'No se pudieron cargar los datos del usuario';
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error loading user data';
+        _errorMessage = 'Error al cargar datos del usuario: $e';
       });
-      print('Error loading user data: $e');
+      print('Error al cargar datos del usuario: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -104,56 +119,56 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
- Future<void> _saveProfile() async {
-  if (_formKey.currentState!.validate()) {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-      _successMessage = '';
-    });
+  Future<void> _saveProfile() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+        _successMessage = '';
+      });
 
-    try {
-      final userData = {
-        'username': _usernameController.text,
-        'email': _emailController.text,
-        'bio': _bioController.text,
-        'profilePicture': _profilePictureController.text,
-      };
+      try {
+        final userData = {
+          'username': _usernameController.text,
+          'email': _emailController.text,
+          'bio': _bioController.text,
+          'profilePicture': _profilePictureController.text,
+        };
 
-      final updatedUser = await _userService.updateUser(_user!.id, userData);
-      
-      // Update local user data
-      setState(() {
-        _user = updatedUser;
-        _successMessage = 'Profile updated successfully';
-        _isEditing = false;
-      });
-      
-      // Update auth service with new user data - THIS IS THE KEY FIX
-      final authService = Provider.of<AuthService>(context, listen: false);
-      authService.updateCurrentUser(updatedUser);
-      
-      // Save updated user data to persistent storage
-      await _userService.saveUserToCache(updatedUser);
-      
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error updating profile';
-      });
-      print('Error updating profile: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+        final updatedUser = await _userService.updateUser(_user!.id, userData);
+        
+        // Update local user data
+        setState(() {
+          _user = updatedUser;
+          _successMessage = 'Perfil actualizado con éxito';
+          _isEditing = false;
+        });
+        
+        // Update auth service with new user data - THIS IS THE KEY FIX
+        final authService = Provider.of<AuthService>(context, listen: false);
+        authService.updateCurrentUser(updatedUser);
+        
+        // Save updated user data to persistent storage
+        await _userService.saveUserToCache(updatedUser);
+        
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Error al actualizar perfil: $e';
+        });
+        print('Error al actualizar perfil: $e');
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: const Text('Mi Perfil'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -169,14 +184,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               await authService.logout(socketService);
               Navigator.pushReplacementNamed(context, AppRoutes.login);
             },
-            tooltip: 'Logout',
+            tooltip: 'Cerrar sesión',
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _user == null
-              ? const Center(child: Text('No user data available'))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('No se encontraron datos de usuario'),
+                      if (_errorMessage.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            _errorMessage,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ElevatedButton(
+                        onPressed: _loadUserData,
+                        child: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
+                )
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -271,7 +305,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                         ),
                                         const SizedBox(height: 8.0),
                                         Text(
-                                          'Level: ${_user!.level}',
+                                          'Nivel: ${_user!.level}',
                                           style: const TextStyle(
                                             fontSize: 16.0,
                                             fontWeight: FontWeight.bold,
@@ -297,15 +331,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 const Divider(),
                                 ListTile(
                                   leading: const Icon(Icons.info_outline),
-                                  title: const Text('Biography'),
+                                  title: const Text('Biografía'),
                                   subtitle: Text(
-                                    _user!.bio ?? 'No biography available',
+                                    _user!.bio ?? 'No hay biografía disponible',
                                     style: const TextStyle(fontSize: 14.0),
                                   ),
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.directions_run),
-                                  title: const Text('Total Distance'),
+                                  title: const Text('Distancia Total'),
                                   subtitle: Text(
                                     '${(_user!.totalDistance / 1000).toStringAsFixed(2)} km',
                                     style: const TextStyle(fontSize: 14.0),
@@ -313,33 +347,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.timer),
-                                  title: const Text('Total Time'),
+                                  title: const Text('Tiempo Total'),
                                   subtitle: Text(
-                                    '${_user!.totalTime} minutes',
+                                    '${_user!.totalTime} minutos',
                                     style: const TextStyle(fontSize: 14.0),
                                   ),
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.event_note),
-                                  title: const Text('Activities'),
+                                  title: const Text('Actividades'),
                                   subtitle: Text(
-                                    '${_user!.activities?.length ?? 0} activities',
+                                    '${_user!.activities?.length ?? 0} actividades',
                                     style: const TextStyle(fontSize: 14.0),
                                   ),
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.emoji_events),
-                                  title: const Text('Achievements'),
+                                  title: const Text('Logros'),
                                   subtitle: Text(
-                                    '${_user!.achievements?.length ?? 0} achievements',
+                                    '${_user!.achievements?.length ?? 0} logros',
                                     style: const TextStyle(fontSize: 14.0),
                                   ),
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.flag),
-                                  title: const Text('Challenges Completed'),
+                                  title: const Text('Retos Completados'),
                                   subtitle: Text(
-                                    '${_user!.challengesCompleted?.length ?? 0} challenges',
+                                    '${_user!.challengesCompleted?.length ?? 0} retos',
                                     style: const TextStyle(fontSize: 14.0),
                                   ),
                                 ),
@@ -352,15 +386,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                       TextFormField(
                                         controller: _usernameController,
                                         decoration: const InputDecoration(
-                                          labelText: 'Username',
+                                          labelText: 'Nombre de usuario',
                                           border: OutlineInputBorder(),
                                         ),
                                         validator: (value) {
                                           if (value == null || value.isEmpty) {
-                                            return 'Username is required';
+                                            return 'El nombre de usuario es obligatorio';
                                           }
                                           if (value.length < 4) {
-                                            return 'Username must be at least 4 characters';
+                                            return 'El nombre debe tener al menos 4 caracteres';
                                           }
                                           return null;
                                         },
@@ -374,11 +408,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                         ),
                                         validator: (value) {
                                           if (value == null || value.isEmpty) {
-                                            return 'Email is required';
+                                            return 'El email es obligatorio';
                                           }
                                           if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
                                               .hasMatch(value)) {
-                                            return 'Please enter a valid email';
+                                            return 'Por favor, introduce un email válido';
                                           }
                                           return null;
                                         },
@@ -387,7 +421,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                       TextFormField(
                                         controller: _profilePictureController,
                                         decoration: const InputDecoration(
-                                          labelText: 'Profile Picture URL',
+                                          labelText: 'URL de imagen de perfil',
                                           border: OutlineInputBorder(),
                                         ),
                                       ),
@@ -395,7 +429,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                       TextFormField(
                                         controller: _bioController,
                                         decoration: const InputDecoration(
-                                          labelText: 'Biography',
+                                          labelText: 'Biografía',
                                           border: OutlineInputBorder(),
                                         ),
                                         maxLines: 3,
@@ -416,7 +450,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                                 _profilePictureController.text = _user!.profilePicture ?? '';
                                               });
                                             },
-                                            child: const Text('Cancel'),
+                                            child: const Text('Cancelar'),
                                           ),
                                           const SizedBox(width: 16.0),
                                           ElevatedButton(
@@ -430,7 +464,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                                       color: Colors.white,
                                                     ),
                                                   )
-                                                : const Text('Save Changes'),
+                                                : const Text('Guardar Cambios'),
                                           ),
                                         ],
                                       ),
