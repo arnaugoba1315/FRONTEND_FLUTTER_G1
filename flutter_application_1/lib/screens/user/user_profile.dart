@@ -104,47 +104,50 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _saveProfile() async {
-    if (_formKey.currentState!.validate()) {
+ Future<void> _saveProfile() async {
+  if (_formKey.currentState!.validate()) {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _successMessage = '';
+    });
+
+    try {
+      final userData = {
+        'username': _usernameController.text,
+        'email': _emailController.text,
+        'bio': _bioController.text,
+        'profilePicture': _profilePictureController.text,
+      };
+
+      final updatedUser = await _userService.updateUser(_user!.id, userData);
+      
+      // Update local user data
       setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-        _successMessage = '';
+        _user = updatedUser;
+        _successMessage = 'Profile updated successfully';
+        _isEditing = false;
       });
-
-      try {
-        final userData = {
-          'username': _usernameController.text,
-          'email': _emailController.text,
-          'bio': _bioController.text,
-          'profilePicture': _profilePictureController.text,
-        };
-
-        final updatedUser = await _userService.updateUser(_user!.id, userData);
-        
-        // Update local user data
-        setState(() {
-          _user = updatedUser;
-          _successMessage = 'Profile updated successfully';
-          _isEditing = false;
-        });
-        
-        // Update auth service with new user data
-        Provider.of<AuthService>(context, listen: false);
-        // This would typically include logic to update the stored user in the auth service
-        
-      } catch (e) {
-        setState(() {
-          _errorMessage = 'Error updating profile';
-        });
-        print('Error updating profile: $e');
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      
+      // Update auth service with new user data - THIS IS THE KEY FIX
+      final authService = Provider.of<AuthService>(context, listen: false);
+      authService.updateCurrentUser(updatedUser);
+      
+      // Save updated user data to persistent storage
+      await _userService.saveUserToCache(updatedUser);
+      
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error updating profile';
+      });
+      print('Error updating profile: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

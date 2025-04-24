@@ -206,7 +206,15 @@ class UserService {
       throw Exception('Failed to update user: $e');
     }
   }
-
+Future<void> saveUserToCache(User user) async {
+  if (user.id.isNotEmpty) {
+    // Update cache
+    _userCache[user.id] = user;
+    
+    // Save to shared preferences
+    await _httpService.saveToCache('user', user.toJson());
+  }
+}
   // Delete user
   Future<bool> deleteUser(String id) async {
     try {
