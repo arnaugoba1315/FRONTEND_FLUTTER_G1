@@ -8,7 +8,9 @@ enum SocketStatus { connecting, connected, disconnected }
 class SocketService with ChangeNotifier {
   late IO.Socket _socket;
   SocketStatus _socketStatus = SocketStatus.disconnected;
-  List<String> _onlineUsers = [];
+  
+  // Updated: Changed to store user objects instead of just IDs
+  List<Map<String, dynamic>> _onlineUsers = [];
   List<Map<String, dynamic>> _notifications = [];
   int _unreadNotifications = 0;
   String? _userTyping;
@@ -18,7 +20,8 @@ class SocketService with ChangeNotifier {
 
   // Getters
   SocketStatus get socketStatus => _socketStatus;
-  List<String> get onlineUsers => _onlineUsers;
+  // Updated: Return the list of online user objects
+  List<Map<String, dynamic>> get onlineUsers => _onlineUsers;
   List<Map<String, dynamic>> get notifications => _notifications;
   int get unreadNotifications => _unreadNotifications;
   IO.Socket get socket => _socket;
@@ -103,11 +106,18 @@ class SocketService with ChangeNotifier {
       print('Socket.IO error: $data');
     });
 
-    _socket.on('user_status', (data) {
+    // Updated: Handle improved user status with usernames
+    _socket.on('online_users', (data) {
       print('User status updated: $data');
-      if (data != null && data['onlineUsers'] != null) {
-        _onlineUsers = List<String>.from(data['onlineUsers']);
-        notifyListeners();
+      if (data != null) {
+        try {
+          // Parse the new format that includes usernames
+          _onlineUsers = List<Map<String, dynamic>>.from(data);
+          print('Online users updated: $_onlineUsers');
+          notifyListeners();
+        } catch (e) {
+          print('Error parsing online users: $e');
+        }
       }
     });
 

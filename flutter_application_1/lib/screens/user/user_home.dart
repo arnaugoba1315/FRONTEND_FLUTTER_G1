@@ -166,7 +166,7 @@ class UserHomeScreen extends StatelessWidget {
               const SizedBox(height: 32.0),
               _buildRecentActivities(context),
               
-              // Usuarios conectados
+              // Usuarios conectados (Updated section)
               const SizedBox(height: 32.0),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,20 +186,31 @@ class UserHomeScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16.0),
-                  Wrap(
-                    spacing: 8.0,
-                    runSpacing: 8.0,
-                    children: socketService.onlineUsers.map((userId) {
-                      return Chip(
-                        avatar: CircleAvatar(
-                          backgroundColor: Colors.green,
-                          radius: 4,
+                  
+                  // IMPROVED: Display usernames instead of IDs
+                  socketService.onlineUsers.isEmpty
+                      ? Text(
+                          'No hay usuarios conectados',
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        )
+                      : Wrap(
+                          spacing: 8.0,
+                          runSpacing: 8.0,
+                          children: socketService.onlineUsers.map((userInfo) {
+                            final username = userInfo['username'] ?? 'Usuario';
+                            return Chip(
+                              avatar: CircleAvatar(
+                                backgroundColor: Colors.green,
+                                radius: 4,
+                              ),
+                              label: Text(username),
+                              backgroundColor: Colors.green.withOpacity(0.1),
+                            );
+                          }).toList(),
                         ),
-                        label: Text(userId),
-                        backgroundColor: Colors.green.withOpacity(0.1),
-                      );
-                    }).toList(),
-                  ),
                 ],
               ),
             ],
