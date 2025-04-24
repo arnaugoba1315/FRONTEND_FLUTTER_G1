@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/services/http_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/chat_room_model.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_application_1/services/chat_service.dart';
 import 'package:flutter_application_1/services/user_service.dart';
 import 'package:flutter_application_1/screens/chat/chat_room.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
+import 'package:flutter_application_1/services/http_service.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({Key? key}) : super(key: key);
@@ -16,8 +16,7 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  final UserService _userService = UserService('requiredArgument' as HttpService);
-  final SocketService _socketService = SocketService();
+  late UserService _userService;
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
   bool _isLoading = false;
@@ -34,6 +33,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
+    // Create the correct UserService
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final httpService = HttpService(authService);
+    _userService = UserService(httpService);
     
     // Solo inicializar una vez
     if (!_isInitialized) {
@@ -96,13 +100,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final chatService = Provider.of<ChatService>(context);
+    final socketService = Provider.of<SocketService>(context);
     
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
         actions: [
           // Estado de conexión
-          _buildConnectionStatus(),
+          _buildConnectionStatus(socketService),
           // Botón de actualizar
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -127,9 +132,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   // Widget de estado de conexión
-  Widget _buildConnectionStatus() {
-    final socketService = Provider.of<SocketService>(context);
-    
+  Widget _buildConnectionStatus(SocketService socketService) {
     Color statusColor;
     IconData statusIcon;
     

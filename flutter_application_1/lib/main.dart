@@ -13,12 +13,15 @@ void main() {
       providers: [
         // Servicio de autenticación
         ChangeNotifierProvider(create: (_) => AuthService()),
+        
         // Servicio de Socket.IO - depende del servicio de autenticación
         ChangeNotifierProvider(create: (_) => SocketService()),
+        
         // Servicio HTTP - depende del servicio de autenticación
-        Provider(
+        Provider<HttpService>(
           create: (context) => HttpService(context.read<AuthService>()),
         ),
+        
         // Servicio de chat - depende de Socket.IO
         ChangeNotifierProxyProvider<SocketService, ChatService>(
           create: (context) => ChatService(context.read<SocketService>()),

@@ -7,8 +7,7 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/chat_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
 import 'package:flutter_application_1/services/user_service.dart';
-
-// ... imports existentes ...
+import 'package:flutter_application_1/services/http_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String roomId;

@@ -38,9 +38,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _bioController = TextEditingController();
     _profilePictureController = TextEditingController();
 
-    // Initialize _userService with the correct parameter
-    _userService = UserService(Provider.of<AuthService>(context, listen: false) as HttpService);
-
+    // Create a new HttpService with the AuthService
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final httpService = HttpService(authService);
+    
+    // Initialize UserService with the proper HttpService
+    _userService = UserService(httpService);
+    
     // Load user data
     _loadUserData();
   }
@@ -55,51 +59,50 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-  setState(() {
-    _isLoading = true;
-    _errorMessage = '';
-  });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
-  try {
-    // First try to get the user from the auth service
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final userService = Provider.of<UserService>(context, listen: false);
-    
-    User? user;
-    
-    // If we have a current user, use that directly
-    if (authService.currentUser != null) {
-      user = authService.currentUser;
-    } else {
-      // Fallback to fetch from API if needed
-      // This should now handle email IDs properly with our enhanced services
-      user = await userService.getUserById(authService.currentUser?.id ?? '');
-    }
-    
-    if (user != null) {
+    try {
+      // First try to get the user from the auth service
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      User? user;
+      
+      // If we have a current user, use that directly
+      if (authService.currentUser != null) {
+        user = authService.currentUser;
+      } else {
+        // Fallback to fetch from API if needed
+        // This should now handle email IDs properly with our enhanced services
+        user = await _userService.getUserById(authService.currentUser?.id ?? '');
+      }
+      
+      if (user != null) {
+        setState(() {
+          _user = user;
+          _usernameController.text = user!.username;
+          _emailController.text = user.email;
+          _bioController.text = user.bio ?? '';
+          _profilePictureController.text = user.profilePicture ?? '';
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'User data not available';
+        });
+      }
+    } catch (e) {
       setState(() {
-        _user = user;
-        _usernameController.text = user!.username;
-        _emailController.text = user.email;
-        _bioController.text = user.bio ?? '';
-        _profilePictureController.text = user.profilePicture ?? '';
+        _errorMessage = 'Error loading user data';
       });
-    } else {
+      print('Error loading user data: $e');
+    } finally {
       setState(() {
-        _errorMessage = 'User data not available';
+        _isLoading = false;
       });
     }
-  } catch (e) {
-    setState(() {
-      _errorMessage = 'Error loading user data';
-    });
-    print('Error loading user data: $e');
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
   }
-}
 
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
