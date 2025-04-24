@@ -1,3 +1,4 @@
+// lib/models/user.dart
 class User {
   final String id;
   final String username;
@@ -34,48 +35,47 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
-    // Manejamos tanto _id como id para mayor compatibilidad
-    String userId = '';
-    if (json.containsKey('_id')) {
-      userId = json['_id'].toString();
-    } else if (json.containsKey('id')) {
-      userId = json['id'].toString();
-    }
-    
-    // Verificación adicional para imprimir información de depuración
-    if (userId.isEmpty) {
-      print("ADVERTENCIA: ID de usuario vacío en respuesta: ${json}");
-    }
-
-    return User(
-      id: userId,
-      username: json['username'] ?? '',
-      email: json['email'] ?? '',
-      profilePicture: json['profilePicture'],
-      bio: json['bio'],
-      level: json['level'] ?? 1,
-      totalDistance: (json['totalDistance'] ?? 0).toDouble(),
-      totalTime: json['totalTime'] ?? 0,
-      activities: json['activities'] != null 
-          ? List<String>.from(json['activities'])
-          : [],
-      achievements: json['achievements'] != null 
-          ? List<String>.from(json['achievements'])
-          : [],
-      challengesCompleted: json['challengesCompleted'] != null 
-          ? List<String>.from(json['challengesCompleted'])
-          : [],
-      visibility: json['visibility'] ?? true,
-      role: json['role'] ?? 'user',
-      createdAt: json['createdAt'] != null 
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
-      updatedAt: json['updatedAt'] != null 
-          ? DateTime.parse(json['updatedAt'])
-          : DateTime.now(),
-    );
+  // Manejamos tanto _id como id para mayor compatibilidad
+  String userId = '';
+  if (json.containsKey('_id')) {
+    userId = json['_id'].toString();
+  } else if (json.containsKey('id')) {
+    userId = json['id'].toString();
   }
-
+  
+  // Si el ID aún está vacío, intentamos buscar en el campo name
+  if (userId.isEmpty && json.containsKey('name')) {
+    userId = json['name']; // Solución temporal - no ideal, pero un fallback
+  }
+  
+  return User(
+    id: userId,
+    username: json['name'] ?? json['username'] ?? '',
+    email: json['email'] ?? '',
+    profilePicture: json['profilePicture'],
+    bio: json['bio'],
+    level: json['level'] ?? 1,
+    totalDistance: (json['totalDistance'] ?? 0).toDouble(),
+    totalTime: json['totalTime'] ?? 0,
+    activities: json['activities'] != null 
+        ? List<String>.from(json['activities'])
+        : [],
+    achievements: json['achievements'] != null 
+        ? List<String>.from(json['achievements'])
+        : [],
+    challengesCompleted: json['challengesCompleted'] != null 
+        ? List<String>.from(json['challengesCompleted'])
+        : [],
+    visibility: json['visibility'] ?? true,
+    role: json['role'] ?? 'user',
+    createdAt: json['createdAt'] != null 
+        ? DateTime.parse(json['createdAt'])
+        : DateTime.now(),
+    updatedAt: json['updatedAt'] != null 
+        ? DateTime.parse(json['updatedAt'])
+        : DateTime.now(),
+  );
+}
   Map<String, dynamic> toJson() {
     return {
       'id': id,

@@ -1,3 +1,4 @@
+// lib/screens/auth/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
@@ -37,13 +38,13 @@ class _LoginScreenState extends State<LoginScreen> {
         final authService = Provider.of<AuthService>(context, listen: false);
         final socketService = Provider.of<SocketService>(context, listen: false);
         
-        final success = await authService.login(
+        final user = await authService.login(
           _usernameController.text,
           _passwordController.text,
           socketService
         );
 
-        if (success != null) {
+        if (user != null) {
           // Navegar según el rol del usuario
           if (authService.isAdmin == true) {
             Navigator.pushReplacementNamed(context, AppRoutes.admin);
@@ -52,18 +53,22 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else {
           setState(() {
-            _errorMessage = 'Usuario o contraseña inválidos';
+            _errorMessage = authService.error.isNotEmpty 
+                ? authService.error 
+                : 'Login failed. Please check your credentials.';
           });
         }
       } catch (e) {
         setState(() {
-          _errorMessage = 'Ocurrió un error durante el inicio de sesión';
+          _errorMessage = 'An error occurred during login';
         });
-        print('Error de inicio de sesión: $e');
+        print('Login error: $e');
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -98,13 +103,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _usernameController,
                       decoration: const InputDecoration(
-                        labelText: 'Usuario',
-                        prefixIcon: Icon(Icons.person),
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email),
                         border: OutlineInputBorder(),
                       ),
+                      keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Por favor ingresa tu nombre de usuario';
+                          return 'Por favor ingresa tu email';
                         }
                         return null;
                       },
@@ -121,9 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Por favor ingresa tu contraseña';
-                        }
-                        if (value.length < 6) {
-                          return 'La contraseña debe tener al menos 6 caracteres';
                         }
                         return null;
                       },

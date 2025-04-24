@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/services/http_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/models/user.dart';
@@ -15,7 +16,7 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final UserService _userService = UserService();
+  late final UserService _userService;
   final _formKey = GlobalKey<FormState>();
   
   late TextEditingController _usernameController;
@@ -36,7 +37,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _emailController = TextEditingController();
     _bioController = TextEditingController();
     _profilePictureController = TextEditingController();
-    
+
+    // Initialize _userService with the correct parameter
+    _userService = UserService(Provider.of<AuthService>(context, listen: false) as HttpService);
+
     // Load user data
     _loadUserData();
   }
@@ -51,36 +55,51 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+  setState(() {
+    _isLoading = true;
+    _errorMessage = '';
+  });
 
-    try {
-      final userId = Provider.of<AuthService>(context, listen: false).currentUser?.id;
-      
-      if (userId != null) {
-        final user = await _userService.getUserById(userId);
-        
-        setState(() {
-          _user = user;
-          _usernameController.text = user?.username ?? '';
-          _emailController.text = user!.email;
-          _bioController.text = user.bio ?? '';
-          _profilePictureController.text = user.profilePicture ?? '';
-        });
-      }
-    } catch (e) {
+  try {
+    // First try to get the user from the auth service
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userService = Provider.of<UserService>(context, listen: false);
+    
+    User? user;
+    
+    // If we have a current user, use that directly
+    if (authService.currentUser != null) {
+      user = authService.currentUser;
+    } else {
+      // Fallback to fetch from API if needed
+      // This should now handle email IDs properly with our enhanced services
+      user = await userService.getUserById(authService.currentUser?.id ?? '');
+    }
+    
+    if (user != null) {
       setState(() {
-        _errorMessage = 'Error loading user data';
+        _user = user;
+        _usernameController.text = user!.username;
+        _emailController.text = user.email;
+        _bioController.text = user.bio ?? '';
+        _profilePictureController.text = user.profilePicture ?? '';
       });
-      print('Error loading user data: $e');
-    } finally {
+    } else {
       setState(() {
-        _isLoading = false;
+        _errorMessage = 'User data not available';
       });
     }
+  } catch (e) {
+    setState(() {
+      _errorMessage = 'Error loading user data';
+    });
+    print('Error loading user data: $e');
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
   }
+}
 
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {

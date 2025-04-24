@@ -1,11 +1,14 @@
+// lib/config/api_constants.dart
 class ApiConstants {
   // Base URL - adjust this to your actual backend URL
   static const String baseUrl = 'http://localhost:3000';
   static const String apiPath = '/api';
   
   // Auth endpoints
-  static const String login = '$baseUrl$apiPath/users/login';
-  static const String register = '$baseUrl$apiPath/users/register';
+  static const String login = '$baseUrl$apiPath/auth/login';
+  static const String register = '$baseUrl$apiPath/auth/register';
+  static const String refreshToken = '$baseUrl$apiPath/auth/refresh';
+  static const String logout = '$baseUrl$apiPath/auth/logout';
   
   // User endpoints
   static const String users = '$baseUrl$apiPath/users';
@@ -31,6 +34,4 @@ class ApiConstants {
   static const String sendMessage = '$baseUrl$apiPath/chat/messages';
   static const String markMessagesRead = '$baseUrl$apiPath/chat/messages/read';
   static String deleteChatRoom(String roomId) => '$baseUrl$apiPath/chat/rooms/$roomId';
-  
-  
 }

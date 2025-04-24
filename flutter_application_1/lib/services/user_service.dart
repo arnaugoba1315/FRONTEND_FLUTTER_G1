@@ -1,11 +1,16 @@
+// lib/services/user_service.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/config/api_constants.dart';
 import 'package:flutter_application_1/models/user.dart';
+import 'package:flutter_application_1/services/http_service.dart';
 
 class UserService {
+  final HttpService _httpService;
+  
   // In-memory cache for users to reduce API calls
   final Map<String, User> _userCache = {};
+  
+  UserService(this._httpService);
   
   // Get all users with pagination
   Future<Map<String, dynamic>> getUsers({
@@ -22,40 +27,36 @@ class UserService {
         },
       );
 
-      final response = await http.get(uri);
-      print('User API response status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        // Parse users list
-        final List<User> users = [];
-        if (data['users'] != null) {
-          for (var item in data['users']) {
-            final user = User.fromJson(item);
-            users.add(user);
-            
-            // Update cache
+      final response = await _httpService.get(uri.toString());
+      final data = await _httpService.parseJsonResponse(response);
+      
+      // Parse users list
+      final List<User> users = [];
+      if (data['users'] != null) {
+        for (var item in data['users']) {
+          final user = User.fromJson(item);
+          users.add(user);
+          
+          // Update cache if id is not empty
+          if (user.id.isNotEmpty) {
             _userCache[user.id] = user;
           }
         }
-        
-        return {
-          'users': users,
-          'totalUsers': data['totalUsers'] ?? 0,
-          'totalPages': data['totalPages'] ?? 1,
-          'currentPage': data['currentPage'] ?? 1,
-        };
       }
       
-      throw Exception('Failed to load users: ${response.statusCode}');
+      return {
+        'users': users,
+        'totalUsers': data['totalUsers'] ?? 0,
+        'totalPages': data['totalPages'] ?? 1,
+        'currentPage': data['currentPage'] ?? 1,
+      };
     } catch (e) {
       print('Error getting users: $e');
-      throw Exception('Failed to load users');
+      throw Exception('Failed to load users: $e');
     }
   }
 
-  // Get user by ID
+  // Get user by ID - with fallback to cache or local data
   Future<User?> getUserById(String id) async {
     // Return from cache if available 
     if (_userCache.containsKey(id)) {
@@ -63,143 +64,155 @@ class UserService {
     }
     
     try {
-      final response = await http.get(Uri.parse(ApiConstants.user(id)));
-
-      if (response.statusCode == 200) {
-        final user = User.fromJson(json.decode(response.body));
+      // Check if the ID is a valid MongoDB ObjectId (24 hex chars)
+      final isValidObjectId = RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(id);
+      
+      // If not a valid ObjectId, try alternative approaches
+      if (!isValidObjectId) {
+        // Check if we can get the current user from shared preferences
+        final userData = await _httpService.getFromCache('user');
+        if (userData != null) {
+          final cachedUser = User.fromJson(userData);
+          if (cachedUser.id == id || cachedUser.email == id) {
+            return cachedUser;
+          }
+        }
         
-        // Add to cache
-        _userCache[id] = user;
+        // If it looks like an email, try to find by email instead
+        if (id.contains('@')) {
+          return await getUserByEmail(id);
+        }
         
-        return user;
-      } else if (response.statusCode == 404) {
-        return null;
+        throw Exception('Invalid user ID format');
       }
       
-      throw Exception('Failed to load user: ${response.statusCode}');
+      final response = await _httpService.get(ApiConstants.user(id));
+      final data = await _httpService.parseJsonResponse(response);
+      
+      final user = User.fromJson(data);
+      
+      // Add to cache
+      if (user.id.isNotEmpty) {
+        _userCache[user.id] = user;
+      }
+      
+      return user;
     } catch (e) {
       print('Error getting user: $e');
-      throw Exception('Failed to load user');
-    }
-  }
-
-  // Get user by username
-  Future<User?> getUserByUsername(String username) async {
-    try {
-      final uri = Uri.parse('${ApiConstants.baseUrl}/api/users/username/$username');
-      final response = await http.get(uri);
-
-      if (response.statusCode == 200) {
-        final user = User.fromJson(json.decode(response.body));
-        
-        // Add to cache
-        _userCache[user.id] = user;
-        
-        return user;
-      } else if (response.statusCode == 404) {
-        // User not found, but not an error
-        return null;
+      
+      // Try to get from cache or shared preferences as a fallback
+      final userData = await _httpService.getFromCache('user');
+      if (userData != null) {
+        return User.fromJson(userData);
       }
       
-      throw Exception('Failed to find user: ${response.statusCode}');
-    } catch (e) {
-      print('Error finding user by username: $e');
-      return null;
+      throw Exception('Failed to load user: $e');
     }
   }
 
-  // Search users by username
-  Future<List<User>> searchUsers(String searchText) async {
+  // Get user by email
+  Future<User?> getUserByEmail(String email) async {
     try {
-      final uri = Uri.parse('${ApiConstants.baseUrl}/api/users/search').replace(
-        queryParameters: {
-          'query': searchText,
-        },
-      );
-
-      final response = await http.get(uri);
-
+      final response = await _httpService.get('${ApiConstants.baseUrl}/api/users/email/$email');
+      
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        final users = data.map((user) => User.fromJson(user)).toList();
+        final user = User.fromJson(await _httpService.parseJsonResponse(response));
         
-        // Update cache
-        for (var user in users) {
+        // Add to cache
+        if (user.id.isNotEmpty) {
           _userCache[user.id] = user;
         }
         
-        return users;
+        return user;
       }
       
-      return [];
+      // If not found, try alternative approach
+      return await _findUserByEmail(email);
     } catch (e) {
-      print('Error searching users: $e');
-      return [];
+      print('Error getting user by email: $e');
+      throw Exception('Failed to load user by email');
+    }
+  }
+  
+  // Helper method to find a user by email via search if direct lookup fails
+  Future<User?> _findUserByEmail(String email) async {
+    try {
+      final response = await _httpService.post(
+        '${ApiConstants.baseUrl}/api/users/search',
+        body: {'email': email}
+      );
+      
+      final data = await _httpService.parseJsonResponse(response);
+      
+      if (data is List && data.isNotEmpty) {
+        final user = User.fromJson(data[0]);
+        if (user.id.isNotEmpty) {
+          _userCache[user.id] = user;
+        }
+        return user;
+      }
+      
+      return null;
+    } catch (e) {
+      print('Error in alternative user search: $e');
+      return null;
     }
   }
 
   // Create user
   Future<User> createUser(Map<String, dynamic> userData) async {
     try {
-      final response = await http.post(
-        Uri.parse(ApiConstants.users),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(userData),
+      final response = await _httpService.post(
+        ApiConstants.users,
+        body: userData,
       );
-
-      if (response.statusCode == 201) {
-        final data = json.decode(response.body);
-        if (data['user'] != null) {
-          final newUser = User.fromJson(data['user']);
-          
-          // Add to cache
-          _userCache[newUser.id] = newUser;
-          
-          return newUser;
-        }
+      
+      final data = await _httpService.parseJsonResponse(response);
+      
+      final newUser = User.fromJson(data['user'] ?? data);
+      
+      // Add to cache
+      if (newUser.id.isNotEmpty) {
+        _userCache[newUser.id] = newUser;
       }
       
-      throw Exception('Failed to create user: ${response.statusCode}');
+      return newUser;
     } catch (e) {
       print('Error creating user: $e');
-      throw Exception('Failed to create user');
+      throw Exception('Failed to create user: $e');
     }
   }
 
   // Update user
   Future<User> updateUser(String id, Map<String, dynamic> userData) async {
     try {
-      final response = await http.put(
-        Uri.parse(ApiConstants.user(id)),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(userData),
+      final response = await _httpService.put(
+        ApiConstants.user(id),
+        body: userData,
       );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['user'] != null) {
-          final updatedUser = User.fromJson(data['user']);
-          
-          // Update cache
-          _userCache[updatedUser.id] = updatedUser;
-          
-          return updatedUser;
-        }
+      
+      final data = await _httpService.parseJsonResponse(response);
+      
+      final updatedUser = User.fromJson(data['user'] ?? data);
+      
+      // Update cache
+      if (updatedUser.id.isNotEmpty) {
+        _userCache[updatedUser.id] = updatedUser;
       }
       
-      throw Exception('Failed to update user: ${response.statusCode}');
+      return updatedUser;
     } catch (e) {
       print('Error updating user: $e');
-      throw Exception('Failed to update user');
+      throw Exception('Failed to update user: $e');
     }
   }
 
   // Delete user
   Future<bool> deleteUser(String id) async {
     try {
-      final response = await http.delete(Uri.parse(ApiConstants.user(id)));
+      final response = await _httpService.delete(ApiConstants.user(id));
       
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         // Remove from cache
         _userCache.remove(id);
         return true;
@@ -215,30 +228,27 @@ class UserService {
   // Toggle user visibility
   Future<Map<String, dynamic>> toggleUserVisibility(String id) async {
     try {
-      final response = await http.put(
-        Uri.parse(ApiConstants.toggleUserVisibility(id)),
-        headers: {'Content-Type': 'application/json'},
+      final response = await _httpService.put(
+        ApiConstants.toggleUserVisibility(id),
       );
-
-      if (response.statusCode == 200) {
-        final result = json.decode(response.body);
+      
+      final result = await _httpService.parseJsonResponse(response);
+      
+      // Update cache if user data is returned
+      if (result['user'] != null) {
+        final userData = result['user'];
+        final userId = userData['id'] ?? userData['_id'];
         
-        // Update cache if user data is returned
-        if (result['user'] != null) {
-          final userData = result['user'];
-          if (userData['id'] != null) {
-            // Remove from cache to force refresh next time
-            _userCache.remove(userData['id']);
-          }
+        if (userId != null) {
+          // Remove from cache to force refresh next time
+          _userCache.remove(userId.toString());
         }
-        
-        return result;
       }
       
-      throw Exception('Failed to toggle user visibility: ${response.statusCode}');
+      return result;
     } catch (e) {
       print('Error toggling user visibility: $e');
-      throw Exception('Failed to toggle user visibility');
+      throw Exception('Failed to toggle user visibility: $e');
     }
   }
   

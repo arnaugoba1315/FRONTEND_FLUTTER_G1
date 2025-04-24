@@ -1,3 +1,4 @@
+// lib/screens/auth/register_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/config/routes.dart';
@@ -56,11 +57,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           
           // Automatically navigate to login after 2 seconds
           Future.delayed(const Duration(seconds: 2), () {
-            Navigator.pushReplacementNamed(context, AppRoutes.login);
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, AppRoutes.login);
+            }
           });
         } else {
           setState(() {
-            _errorMessage = 'Registration failed. Please try again.';
+            _errorMessage = authService.error.isNotEmpty 
+                ? authService.error 
+                : 'Registration failed. Please try again.';
           });
         }
       } catch (e) {
@@ -69,9 +74,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         });
         print('Registration error: $e');
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -117,9 +124,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter a username';
-                        }
-                        if (value.length < 8) {
-                          return 'Username must be at least 8 characters';
                         }
                         return null;
                       },

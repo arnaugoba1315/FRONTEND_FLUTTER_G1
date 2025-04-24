@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/services/http_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/chat_room_model.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -15,7 +16,8 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  final UserService _userService = UserService();
+  final UserService _userService = UserService('requiredArgument' as HttpService);
+  final SocketService _socketService = SocketService();
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
   bool _isLoading = false;

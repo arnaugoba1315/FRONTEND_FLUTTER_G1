@@ -1,9 +1,11 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/config/routes.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
 import 'package:flutter_application_1/services/chat_service.dart';
+import 'package:flutter_application_1/services/http_service.dart';
 
 void main() {
   runApp(
@@ -13,6 +15,10 @@ void main() {
         ChangeNotifierProvider(create: (_) => AuthService()),
         // Servicio de Socket.IO - depende del servicio de autenticación
         ChangeNotifierProvider(create: (_) => SocketService()),
+        // Servicio HTTP - depende del servicio de autenticación
+        Provider(
+          create: (context) => HttpService(context.read<AuthService>()),
+        ),
         // Servicio de chat - depende de Socket.IO
         ChangeNotifierProxyProvider<SocketService, ChatService>(
           create: (context) => ChatService(context.read<SocketService>()),
@@ -56,7 +62,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Chat App',
+      title: 'Sport Activity App',
       navigatorKey: navigatorKey,
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
