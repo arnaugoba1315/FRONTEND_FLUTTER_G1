@@ -280,7 +280,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         },
         icon: const Icon(Icons.add),
         label: const Text('Iniciar Actividad'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: const Color.fromARGB(255, 189, 174, 218),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );

@@ -84,32 +84,44 @@ class ActivityTracking {
 
   factory ActivityTracking.fromJson(Map<String, dynamic> json) {
     ActivityTrackingStatus status;
-    if (!json['isActive']) {
+    if (json['isActive'] == false) {
       status = ActivityTrackingStatus.finished;
-    } else if (json['isPaused']) {
+    } else if (json['isPaused'] == true) {
       status = ActivityTrackingStatus.paused;
     } else {
       status = ActivityTrackingStatus.active;
     }
 
+    // Extrae ID de diferentes formatos posibles
+    String trackingId = '';
+    if (json.containsKey('_id')) {
+      if (json['_id'] is Map) {
+        trackingId = json['_id'].toString();
+      } else {
+        trackingId = json['_id'] ?? '';
+      }
+    } else if (json.containsKey('id')) {
+      trackingId = json['id'] ?? '';
+    }
+
     return ActivityTracking(
-      id: json['_id'] ?? json['id'] ?? '',
-      userId: json['userId'] ?? '',
+      id: trackingId,
+      userId: json['userId']?.toString() ?? '',
       activityType: json['activityType'] ?? 'running',
       startTime: json['startTime'] != null 
-          ? DateTime.parse(json['startTime']) 
+          ? DateTime.parse(json['startTime'].toString()) 
           : DateTime.now(),
       endTime: json['endTime'] != null 
-          ? DateTime.parse(json['endTime']) 
+          ? DateTime.parse(json['endTime'].toString()) 
           : null,
       isActive: json['isActive'] ?? true,
       isPaused: json['isPaused'] ?? false,
       pauseTime: json['pauseTime'] != null 
-          ? DateTime.parse(json['pauseTime']) 
+          ? DateTime.parse(json['pauseTime'].toString()) 
           : null,
-      totalPausedTime: json['totalPausedTime'] ?? 0,
+      totalPausedTime: (json['totalPausedTime'] ?? 0).toInt(),
       currentDistance: json['currentDistance']?.toDouble() ?? 0.0,
-      currentDuration: json['currentDuration'] ?? 0,
+      currentDuration: (json['currentDuration'] ?? 0).toInt(),
       currentSpeed: json['currentSpeed']?.toDouble() ?? 0.0,
       averageSpeed: json['averageSpeed']?.toDouble() ?? 0.0,
       maxSpeed: json['maxSpeed']?.toDouble() ?? 0.0,

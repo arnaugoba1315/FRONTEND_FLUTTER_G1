@@ -21,12 +21,12 @@ class ActivityTrackingService {
 
       final data = await _httpService.parseJsonResponse(response);
       
-      if (data['tracking'] != null) {
+      if (data != null && data['tracking'] != null) {
         // El backend devuelve solo información básica, así que hacemos una petición adicional para obtener todos los datos
         return await getTrackingById(data['tracking']['id']);
       }
       
-      throw Exception('Error iniciando actividad de tracking');
+      throw Exception('Error iniciando actividad de tracking: Datos incompletos');
     } catch (e) {
       print('Error iniciando actividad de tracking: $e');
       rethrow;
@@ -51,10 +51,9 @@ class ActivityTrackingService {
         },
       );
 
-      final data = await _httpService.parseJsonResponse(response);
+      await _httpService.parseJsonResponse(response);
       
-      // El backend solo devuelve información parcial actualizada, así que hacemos una petición adicional
-      // para obtener todos los datos del tracking
+      // Obtenemos los datos actualizados
       return await getTrackingById(trackingId);
     } catch (e) {
       print('Error actualizando ubicación: $e');
@@ -70,7 +69,7 @@ class ActivityTrackingService {
         body: {},
       );
 
-      final data = await _httpService.parseJsonResponse(response);
+      await _httpService.parseJsonResponse(response);
       
       // Actualizar tracking completo
       return await getTrackingById(trackingId);
@@ -88,7 +87,7 @@ class ActivityTrackingService {
         body: {},
       );
 
-      final data = await _httpService.parseJsonResponse(response);
+      await _httpService.parseJsonResponse(response);
       
       // Actualizar tracking completo
       return await getTrackingById(trackingId);
@@ -101,6 +100,9 @@ class ActivityTrackingService {
   // Finalizar un tracking
   Future<Map<String, dynamic>> finishTracking(String trackingId, {String? name}) async {
     try {
+      // Agregar un pequeño retraso para asegurar que todas las peticiones anteriores están completas
+      await Future.delayed(const Duration(milliseconds: 500));
+      
       final response = await _httpService.post(
         '${ApiConstants.baseUrl}/api/activity-tracking/$trackingId/finish',
         body: name != null ? {'name': name} : {},
@@ -109,9 +111,9 @@ class ActivityTrackingService {
       final data = await _httpService.parseJsonResponse(response);
       
       return {
-        'trackingId': data['tracking']['id'],
-        'activityId': data['activity']['id'],
-        'name': data['activity']['name'],
+        'trackingId': data['tracking']['id'] ?? trackingId,
+        'activityId': data['activity']?['id'] ?? '',
+        'name': data['activity']?['name'] ?? '',
       };
     } catch (e) {
       print('Error finalizando tracking: $e');
@@ -126,7 +128,7 @@ class ActivityTrackingService {
         '${ApiConstants.baseUrl}/api/activity-tracking/$trackingId/discard',
       );
 
-      return response.statusCode == 200;
+      return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
       print('Error descartando tracking: $e');
       return false;
@@ -141,6 +143,26 @@ class ActivityTrackingService {
       );
 
       final data = await _httpService.parseJsonResponse(response);
+      
+      // Verificar si los datos son válidos
+      if (data == null) {
+        throw Exception('No se recibieron datos del servidor');
+      }
+      
+      // Intentar manejar diferentes formatos de datos
+      if (data is! Map<String, dynamic>) {
+        if (data is String) {
+          // Intentar parsear como JSON si es string
+          try {
+            return ActivityTracking.fromJson(json.decode(data));
+          } catch (_) {
+            throw Exception('Formato de datos no válido: $data');
+          }
+        }
+        
+        throw Exception('Formato de datos no válido: ${data.runtimeType}');
+      }
+      
       return ActivityTracking.fromJson(data);
     } catch (e) {
       print('Error obteniendo tracking: $e');
@@ -158,9 +180,25 @@ class ActivityTrackingService {
       final data = await _httpService.parseJsonResponse(response);
       
       List<ActivityTracking> trackings = [];
-      if (data['trackings'] != null) {
-        for (var tracking in data['trackings']) {
-          trackings.add(ActivityTracking.fromJson(tracking));
+      
+      if (data != null) {
+        if (data['trackings'] != null && data['trackings'] is List) {
+          for (var tracking in data['trackings']) {
+            try {
+              trackings.add(ActivityTracking.fromJson(tracking));
+            } catch (e) {
+              print('Error al parsear tracking: $e');
+            }
+          }
+        } else if (data is List) {
+          // Si la respuesta ya es una lista
+          for (var tracking in data) {
+            try {
+              trackings.add(ActivityTracking.fromJson(tracking));
+            } catch (e) {
+              print('Error al parsear tracking: $e');
+            }
+          }
         }
       }
       

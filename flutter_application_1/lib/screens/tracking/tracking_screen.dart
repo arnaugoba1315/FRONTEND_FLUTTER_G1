@@ -29,6 +29,7 @@ class TrackingScreenState extends State<TrackingScreen> with WidgetsBindingObser
   bool _mapFollowing = true;
   bool _showFinishDialog = false;
   bool _isInitialized = false;
+  bool _isMapReady = false;
 
   @override
   void initState() {
@@ -63,8 +64,6 @@ class TrackingScreenState extends State<TrackingScreen> with WidgetsBindingObser
       }
     }
   }
-
-  
 
   Future<void> _checkPermissionsAndStartTracking() async {
     final hasPermission = await PermissionHandler.checkLocationPermission(context);
@@ -218,11 +217,18 @@ class TrackingScreenState extends State<TrackingScreen> with WidgetsBindingObser
         final currentPosition = locationService.currentPosition;
         final locationHistory = locationService.locationHistory;
         
-        if (_mapFollowing && currentPosition != null) {
-          _mapController.move(
-            LatLng(currentPosition.latitude, currentPosition.longitude),
-            17,
-          );
+        // Solo intentamos mover el mapa si está listo y tenemos una posición
+        if (_isMapReady && _mapFollowing && currentPosition != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            try {
+              _mapController.move(
+                LatLng(currentPosition.latitude, currentPosition.longitude),
+                17,
+              );
+            } catch (e) {
+              // Ignoramos errores durante el movimiento del mapa
+            }
+          });
         }
         
         return Scaffold(
@@ -301,6 +307,11 @@ class TrackingScreenState extends State<TrackingScreen> with WidgetsBindingObser
         onTap: (_, __) {
           setState(() {
             _mapFollowing = false;
+          });
+        },
+        onMapReady: () {
+          setState(() {
+            _isMapReady = true;
           });
         },
       ),

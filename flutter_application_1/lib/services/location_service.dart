@@ -27,7 +27,7 @@ class LocationService extends ChangeNotifier {
   DateTime? get trackingStartTime => _trackingStartTime;
 
   // Control de precisión
-  LocationSettings _locationSettings = const LocationSettings(
+  final LocationSettings _locationSettings = const LocationSettings(
     accuracy: LocationAccuracy.high,
     distanceFilter: 5, // Actualizar cuando el usuario se mueva 5 metros
   );
@@ -73,23 +73,30 @@ class LocationService extends ChangeNotifier {
       return false;
     }
 
-    _locationSettings = LocationSettings(
-      accuracy: accuracy,
-      distanceFilter: 5,
-    );
-
     try {
-      // Obtener posición inicial
-      _currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: accuracy,
-      );
+      // Primero intentamos obtener la posición actual antes de iniciar el stream
+      try {
+        _currentPosition = await Geolocator.getCurrentPosition(
+          desiredAccuracy: accuracy,
+          timeLimit: const Duration(seconds: 10), // Añadimos un tiempo límite para evitar bloqueos
+        );
+      } catch (e) {
+        print('Error obteniendo posición inicial: $e');
+        // Si falla, podemos continuar de todos modos, el stream eventualmente nos dará una posición
+      }
       
       // Iniciar el stream de posiciones
       _positionStreamSubscription = Geolocator.getPositionStream(
         locationSettings: _locationSettings,
-      ).listen((Position position) {
-        _updatePosition(position);
-      });
+      ).listen(
+        (Position position) {
+          _updatePosition(position);
+        },
+        onError: (e) {
+          print('Error en stream de posición: $e');
+          // No detenemos el tracking por errores ocasionales
+        },
+      );
 
       // Marcar como rastreando
       _isTracking = true;

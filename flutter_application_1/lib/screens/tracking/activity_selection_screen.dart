@@ -42,6 +42,8 @@ class _ActivitySelectionScreenState extends State<ActivitySelectionScreen> {
           ),
         );
       }
+    } catch (e) {
+      print('Error checking active trackings: $e');
     } finally {
       if (mounted) {
         setState(() {
