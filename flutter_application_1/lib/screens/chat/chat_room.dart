@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/services/notification_services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_application_1/models/message.dart';
 import 'package:flutter_application_1/models/chat_room_model.dart';
@@ -29,12 +30,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
   ChatRoom? _currentRoom;
   bool _isLoadingMessages = false;
 
-  @override
+   @override
   void initState() {
     super.initState();
+    _loadRoom();
     WidgetsBinding.instance.addObserver(this);
     _loadRoom();
+    _markChatNotificationsAsRead();
     
+    _scrollController.addListener(() {
+      setState(() {
+        _isAtBottom = _scrollController.position.pixels == 
+                     _scrollController.position.maxScrollExtent;
+      });
+    });
     _scrollController.addListener(() {
       setState(() {
         _isAtBottom = _scrollController.position.pixels == 
@@ -51,7 +60,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     _typingTimeout?.cancel();
     super.dispose();
   }
-
+ void _markChatNotificationsAsRead() {
+    final notificationService = Provider.of<NotificationService>(context, listen: false);
+    
+    // Marca como leídas todas las notificaciones de tipo chat_message para esta sala
+    for (var notification in notificationService.notifications) {
+      if (notification.type == 'chat_message' && 
+          notification.data != null && 
+          notification.data!['roomId'] == widget.roomId &&
+          !notification.read) {
+        notificationService.markAsRead(notification.id);
+      }
+    }
+  }
   Future<void> _loadRoom() async {
     final chatService = Provider.of<ChatService>(context, listen: false);
     
@@ -232,7 +253,8 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  String _formatTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-  }
+String _formatTime(DateTime time) {
+  final localTime = time.toLocal();
+  return '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
+}
 }

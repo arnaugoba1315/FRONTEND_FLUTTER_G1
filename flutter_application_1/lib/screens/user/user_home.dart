@@ -4,9 +4,63 @@ import 'package:flutter_application_1/config/routes.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/socket_service.dart';
 import 'package:flutter_application_1/screens/chat/chat_list.dart';
+import 'package:flutter_application_1/providers/activity_provider_tracking.dart';
 
-class UserHomeScreen extends StatelessWidget {
+class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({Key? key}) : super(key: key);
+
+  @override
+  _UserHomeScreenState createState() => _UserHomeScreenState();
+}
+
+class _UserHomeScreenState extends State<UserHomeScreen> {
+  bool _isCheckingTrackings = false; // Tracks if tracking check is in progress
+  @override
+  void initState() {
+    super.initState();
+    
+    // Verificar si hay actividades de tracking activas cuando se carga la pantalla
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkActiveTrackings();
+    });
+  }
+
+  // Verificar si hay actividades de tracking activas
+  Future<void> _checkActiveTrackings() async {
+    if (_isCheckingTrackings) return;
+    
+    setState(() {
+      _isCheckingTrackings = true;
+    });
+
+    try {
+      final trackingProvider = Provider.of<ActivityTrackingProvider>(context, listen: false);
+      final authService = Provider.of<AuthService>(context, listen: false);
+
+      if (authService.currentUser != null) {
+        await trackingProvider.checkActiveTrackings();
+        
+        if (trackingProvider.currentTracking != null && mounted) {
+          Navigator.pushNamed(
+            context,
+            AppRoutes.tracking,
+            arguments: {
+              'activityType': trackingProvider.currentTracking!.activityType,
+              'resuming': true,
+            },
+          );
+        }
+      }
+    } catch (e) {
+      print('Error checking active trackings: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingTrackings = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +123,6 @@ class UserHomeScreen extends StatelessWidget {
         title: const Text('EA Grup 1'),
         actions: [
           // Indicador de notificaciones
-          
           
           // Botón de chat
           IconButton(
@@ -213,10 +266,23 @@ class UserHomeScreen extends StatelessWidget {
                         ),
                 ],
               ),
+              
+              // Altura adicional para evitar que el botón flotante tape contenido
+              const SizedBox(height: 80),
             ],
           ),
         ),
       ),
+      // Botón flotante para iniciar actividad
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.pushNamed(context, AppRoutes.activitySelection);
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Iniciar Actividad'),
+        backgroundColor: Colors.deepPurple,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
