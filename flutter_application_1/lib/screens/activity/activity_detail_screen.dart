@@ -3,8 +3,11 @@ import 'package:flutter_application_1/models/activity.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_1/services/http_service.dart';
+import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:provider/provider.dart';
 
-class ActivityDetailScreen extends StatelessWidget {
+class ActivityDetailScreen extends StatefulWidget {
   final Activity activity;
 
   const ActivityDetailScreen({
@@ -13,13 +16,29 @@ class ActivityDetailScreen extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<ActivityDetailScreen> createState() => _ActivityDetailScreenState();
+}
+
+class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
+  bool _isLoadingRoutePoints = false;
+  List<LatLng> _routePoints = [];
+
+  @override
+  void initState() {
+    super.initState();
+   
+  }
+
+  
+
+  @override
   Widget build(BuildContext context) {
     // Determinar el tipo de actividad y colores asociados
     String activityTypeText;
     IconData activityIcon;
     Color activityColor;
 
-    switch (activity.type) {
+    switch (widget.activity.type) {
       case ActivityType.running:
         activityTypeText = 'Carrera';
         activityIcon = Icons.directions_run;
@@ -44,7 +63,7 @@ class ActivityDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(activity.name),
+        title: Text(widget.activity.name),
         backgroundColor: activityColor,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -83,7 +102,7 @@ class ActivityDetailScreen extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                DateFormat('dd MMM yyyy, HH:mm').format(activity.startTime),
+                                DateFormat('dd MMM yyyy, HH:mm').format(widget.activity.startTime),
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14,
@@ -121,7 +140,7 @@ class ActivityDetailScreen extends StatelessWidget {
                       Expanded(
                         child: _buildStatCard(
                           'Distancia',
-                          activity.formatDistance(),
+                          widget.activity.formatDistance(),
                           Icons.straighten,
                         ),
                       ),
@@ -129,7 +148,7 @@ class ActivityDetailScreen extends StatelessWidget {
                       Expanded(
                         child: _buildStatCard(
                           'Tiempo',
-                          activity.formatDuration(),
+                          widget.activity.formatDuration(),
                           Icons.timer,
                         ),
                       ),
@@ -156,45 +175,43 @@ class ActivityDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   
-                  _buildDetailRow('Inicio', DateFormat('dd/MM/yyyy HH:mm:ss').format(activity.startTime)),
+                  _buildDetailRow('Inicio', DateFormat('dd/MM/yyyy HH:mm:ss').format(widget.activity.startTime)),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Fin', DateFormat('dd/MM/yyyy HH:mm:ss').format(activity.endTime)),
+                  _buildDetailRow('Fin', DateFormat('dd/MM/yyyy HH:mm:ss').format(widget.activity.endTime)),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Duración', activity.formatDuration()),
+                  _buildDetailRow('Duración', widget.activity.formatDuration()),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Distancia', activity.formatDistance()),
+                  _buildDetailRow('Distancia', widget.activity.formatDistance()),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Velocidad Media', '${(activity.averageSpeed * 3.6).toStringAsFixed(1)} km/h'),
+                  _buildDetailRow('Velocidad Media', '${(widget.activity.averageSpeed * 3.6).toStringAsFixed(1)} km/h'),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Desnivel Positivo', '${activity.elevationGain.toStringAsFixed(0)} m'),
+                  _buildDetailRow('Desnivel Positivo', '${widget.activity.elevationGain.toStringAsFixed(0)} m'),
                   const Divider(height: 1),
                   
-                  _buildDetailRow('Calorías', activity.caloriesBurned != null 
-                      ? '${activity.caloriesBurned!.toStringAsFixed(0)} kcal' 
+                  _buildDetailRow('Calorías', widget.activity.caloriesBurned != null 
+                      ? '${widget.activity.caloriesBurned!.toStringAsFixed(0)} kcal' 
                       : 'No disponible'),
                   
                   const SizedBox(height: 24),
                   
-                  // Mapa de la ruta (si hay puntos de ruta)
-                  if (activity.route.isNotEmpty) ...[
-                    const Text(
-                      'Ruta',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  // Mapa de la ruta
+                  const Text(
+                    'Ruta',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 250,
-                      child: _buildRouteMap(),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 250,
+                    child: _buildRouteMap(),
+                  ),
                   
                   const SizedBox(height: 24),
                 ],
@@ -263,10 +280,40 @@ class ActivityDetailScreen extends StatelessWidget {
   }
 
   Widget _buildRouteMap() {
-    // Simulación de puntos de ruta
-    // En una implementación real, habría que convertir los puntos de ruta de activity.route
-    // a una lista de LatLng para mostrar la ruta real en el mapa
+    if (_isLoadingRoutePoints) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_routePoints.isEmpty) {
+      return const Center(
+        child: Text(
+          'No hay datos de ruta disponibles para esta actividad',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    // Calcular el centro y zoom para el mapa
+    LatLng center;
+    double zoom = 13.0;
     
+    if (_routePoints.length == 1) {
+      center = _routePoints[0];
+    } else {
+      // Calcular el centro promediando todos los puntos
+      double sumLat = 0;
+      double sumLng = 0;
+      
+      for (var point in _routePoints) {
+        sumLat += point.latitude;
+        sumLng += point.longitude;
+      }
+      
+      center = LatLng(sumLat / _routePoints.length, sumLng / _routePoints.length);
+    }
+
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
@@ -274,8 +321,8 @@ class ActivityDetailScreen extends StatelessWidget {
       ),
       child: FlutterMap(
         options: MapOptions(
-          center: LatLng(41.3851, 2.1734), // Barcelona por defecto
-          zoom: 13.0,
+          center: center,
+          zoom: zoom,
         ),
         children: [
           TileLayer(
@@ -285,15 +332,39 @@ class ActivityDetailScreen extends StatelessWidget {
           PolylineLayer(
             polylines: [
               Polyline(
-                points: [
-                  // Puntos de ejemplo (en una implementación real estos vendrían de activity.route)
-                  LatLng(41.3851, 2.1734),
-                  LatLng(41.3901, 2.1854),
-                  LatLng(41.3921, 2.1834),
-                  LatLng(41.3951, 2.1934),
-                ],
+                points: _routePoints,
                 color: Colors.blue,
-                strokeWidth: 3.0,
+                strokeWidth: 4.0,
+              ),
+            ],
+          ),
+          MarkerLayer(
+            markers: [
+              // Marcador de inicio (verde)
+              Marker(
+                point: _routePoints.first,
+                width: 20,
+                height: 20,
+                builder: (context) => Container(
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+              // Marcador de fin (rojo)
+              Marker(
+                point: _routePoints.last,
+                width: 20,
+                height: 20,
+                builder: (context) => Container(
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
               ),
             ],
           ),
@@ -304,12 +375,12 @@ class ActivityDetailScreen extends StatelessWidget {
 
   // Calcular ritmo en minutos por kilómetro
   String _calculatePace() {
-    if (activity.distance <= 0 || activity.duration <= 0) {
+    if (widget.activity.distance <= 0 || widget.activity.duration <= 0) {
       return '--:--';
     }
     
     // Convertir a minutos por kilómetro
-    final paceInMinutes = (activity.duration / 60) / (activity.distance / 1000);
+    final paceInMinutes = (widget.activity.duration / 60) / (widget.activity.distance / 1000);
     final minutes = paceInMinutes.floor();
     final seconds = ((paceInMinutes - minutes) * 60).round();
     

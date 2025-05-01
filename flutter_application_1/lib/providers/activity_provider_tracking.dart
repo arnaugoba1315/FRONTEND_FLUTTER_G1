@@ -15,6 +15,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
   bool _isLoading = false;
   String _error = '';
   Timer? _updateTimer;
+  Timer? _durationTimer; // Timer para actualizar la duración
   
   ActivityTracking? get currentTracking => _currentTracking;
   bool get isTracking => _locationService.isTracking;
@@ -39,12 +40,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
       _currentTracking!.currentDistance = _locationService.getTotalDistance();
       _currentTracking!.elevationGain = _locationService.getElevationGain();
       
-      if (_currentTracking!.startTime != null) {
-        final now = DateTime.now();
-        int durationMs = now.difference(_currentTracking!.startTime).inMilliseconds;
-        durationMs -= _currentTracking!.totalPausedTime;
-        _currentTracking!.currentDuration = (durationMs / 1000).round();
-      }
+      // La duración ahora se actualiza con el _durationTimer
       
       _currentTracking!.currentSpeed = _locationService.getCurrentSpeed();
       
@@ -103,6 +99,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
     }
     
     _setupUpdateTimer();
+    _setupDurationTimer(); // Configura el timer para la duración
     
     _isLoading = false;
     notifyListeners();
@@ -114,6 +111,20 @@ class ActivityTrackingProvider extends ChangeNotifier {
     return false;
   }
 }
+
+  // Nuevo método para configurar el timer de duración
+  void _setupDurationTimer() {
+    _durationTimer?.cancel();
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_currentTracking != null && !_currentTracking!.isPaused) {
+        final now = DateTime.now();
+        int durationMs = now.difference(_currentTracking!.startTime).inMilliseconds;
+        durationMs -= _currentTracking!.totalPausedTime;
+        _currentTracking!.currentDuration = (durationMs / 1000).round();
+        notifyListeners();
+      }
+    });
+  }
 
   Future<bool> pauseTracking() async {
     if (_currentTracking == null || !_locationService.isTracking || _locationService.isPaused) {
@@ -131,6 +142,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
       
       _updateTimer?.cancel();
       _updateTimer = null;
+      // No cancela _durationTimer, solo se detendrá la actualización por la condición de isPaused
       
       _isLoading = false;
       notifyListeners();
@@ -158,6 +170,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
       _currentTracking = updatedTracking;
       
       _setupUpdateTimer();
+      // No es necesario configurar _durationTimer porque ya debe estar ejecutándose
       
       _isLoading = false;
       notifyListeners();
@@ -185,6 +198,9 @@ class ActivityTrackingProvider extends ChangeNotifier {
       
       _updateTimer?.cancel();
       _updateTimer = null;
+      
+      _durationTimer?.cancel(); // Detener el timer de duración
+      _durationTimer = null;
       
       _currentTracking = null;
       _isLoading = false;
@@ -215,6 +231,9 @@ class ActivityTrackingProvider extends ChangeNotifier {
       _updateTimer?.cancel();
       _updateTimer = null;
       
+      _durationTimer?.cancel(); // Detener el timer de duración
+      _durationTimer = null;
+      
       _currentTracking = null;
       _isLoading = false;
       notifyListeners();
@@ -244,6 +263,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
       if (!_currentTracking!.isPaused) {
         await _locationService.startTracking(trackingId: _currentTracking!.id);
         _setupUpdateTimer();
+        _setupDurationTimer(); // Configurar el timer de duración al reanudar
       }
     } else {
       _currentTracking = null;
@@ -291,6 +311,7 @@ class ActivityTrackingProvider extends ChangeNotifier {
   void dispose() {
     _locationService.removeListener(_handleLocationUpdate);
     _updateTimer?.cancel();
+    _durationTimer?.cancel(); // Limpiar el timer de duración
     super.dispose();
   }
 }
