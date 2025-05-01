@@ -73,42 +73,42 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   // Load user activities
-  Future<void> _loadUserActivities() async {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    if (authService.currentUser == null) return;
+Future<void> _loadUserActivities() async {
+  final authService = Provider.of<AuthService>(context, listen: false);
+  if (authService.currentUser == null) return;
 
-    setState(() {
-      _isLoadingActivities = true;
-    });
+  setState(() {
+    _isLoadingActivities = true;
+  });
 
-    try {
-      // Create activity service
-      final httpService = HttpService(authService);
-      final activityService = ActivityService(httpService);
-      
-      // Get user activities
-      final activities = await activityService.getActivitiesByUserId(
-        authService.currentUser!.id
-      );
-      
-      // Sort by date - most recent first
-      activities.sort((a, b) => b.startTime.compareTo(a.startTime));
-      
-      if (mounted) {
-        setState(() {
-          _userActivities = activities;
-          _isLoadingActivities = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading user activities: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingActivities = false;
-        });
-      }
+  try {
+    // Create activity service
+    final httpService = HttpService(authService);
+    final activityService = ActivityService(httpService);
+    
+    // Get user activities
+    final activities = await activityService.getActivitiesByUserId(
+      authService.currentUser!.id
+    );
+    
+    // Sort by date - most recent first
+    activities.sort((a, b) => b.startTime.compareTo(a.startTime));
+    
+    if (mounted) {
+      setState(() {
+        _userActivities = activities;
+        _isLoadingActivities = false;
+      });
+    }
+  } catch (e) {
+    print('Error loading user activities: $e');
+    if (mounted) {
+      setState(() {
+        _isLoadingActivities = false;
+      });
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +333,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         },
         icon: const Icon(Icons.add),
         label: const Text('Iniciar Actividad'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: const Color.fromARGB(255, 180, 153, 225),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
