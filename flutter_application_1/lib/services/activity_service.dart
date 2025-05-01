@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:flutter_application_1/services/http_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/config/api_constants.dart';
 import 'package:flutter_application_1/models/activity.dart';
 
 class ActivityService {
+  ActivityService(HttpService httpService);
+
   // Get activities with pagination
   Future<Map<String, dynamic>> getActivities({
     int page = 1,
