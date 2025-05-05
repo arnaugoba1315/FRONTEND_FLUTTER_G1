@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_application_1/services/http_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/reference_point_service.dart';
 import 'package:provider/provider.dart';
 
 class ActivityDetailScreen extends StatefulWidget {
@@ -22,14 +23,55 @@ class ActivityDetailScreen extends StatefulWidget {
 class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   bool _isLoadingRoutePoints = false;
   List<LatLng> _routePoints = [];
+  late ReferencePointService _referencePointService;
 
   @override
   void initState() {
     super.initState();
-   
+    _initializeServices();
   }
 
-  
+  void _initializeServices() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final httpService = HttpService(authService);
+      _referencePointService = ReferencePointService(httpService);
+      
+      _loadRoutePoints();
+    });
+  }
+
+  Future<void> _loadRoutePoints() async {
+    if (widget.activity.route.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingRoutePoints = true;
+    });
+
+    try {
+      print('Loading route points for activity: ${widget.activity.id}');
+      print('Route points to load: ${widget.activity.route}');
+      
+      final routePoints = await _referencePointService.getRoutePoints(widget.activity.route);
+      print('Route points loaded: ${routePoints.length}');
+      
+      if (mounted) {
+        setState(() {
+          _routePoints = routePoints;
+          _isLoadingRoutePoints = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading route points: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingRoutePoints = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +207,22 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
                   const SizedBox(height: 24),
                   
+                  // Mapa de la ruta (ahora movido arriba para darle más importancia)
+                  const Text(
+                    'Ruta',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 300, // Increased height for better visibility
+                    child: _buildRouteMap(),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
                   // Detalles de la actividad
                   const Text(
                     'Detalles',
@@ -196,22 +254,6 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                   _buildDetailRow('Calorías', widget.activity.caloriesBurned != null 
                       ? '${widget.activity.caloriesBurned!.toStringAsFixed(0)} kcal' 
                       : 'No disponible'),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Mapa de la ruta
-                  const Text(
-                    'Ruta',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 250,
-                    child: _buildRouteMap(),
-                  ),
                   
                   const SizedBox(height: 24),
                 ],
@@ -282,22 +324,50 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
   Widget _buildRouteMap() {
     if (_isLoadingRoutePoints) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Cargando ruta...'),
+          ],
+        ),
       );
     }
 
     if (_routePoints.isEmpty) {
-      return const Center(
-        child: Text(
-          'No hay datos de ruta disponibles para esta actividad',
-          textAlign: TextAlign.center,
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.map,
+                  size: 48,
+                  color: Colors.grey,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'No hay datos de ruta disponibles para esta actividad',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
 
     // Calcular el centro y zoom para el mapa
     LatLng center;
-    double zoom = 13.0;
+    double zoom = 14.0;
     
     if (_routePoints.length == 1) {
       center = _routePoints[0];
@@ -312,6 +382,36 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       }
       
       center = LatLng(sumLat / _routePoints.length, sumLng / _routePoints.length);
+      
+      // Calcular el zoom adecuado (esto es simplificado, se podría mejorar)
+      double minLat = _routePoints[0].latitude;
+      double maxLat = _routePoints[0].latitude;
+      double minLng = _routePoints[0].longitude;
+      double maxLng = _routePoints[0].longitude;
+      
+      for (var point in _routePoints) {
+        if (point.latitude < minLat) minLat = point.latitude;
+        if (point.latitude > maxLat) maxLat = point.latitude;
+        if (point.longitude < minLng) minLng = point.longitude;
+        if (point.longitude > maxLng) maxLng = point.longitude;
+      }
+      
+      // Si la ruta es muy pequeña, mantener un zoom mínimo
+      final latDiff = maxLat - minLat;
+      final lngDiff = maxLng - minLng;
+      
+      if (latDiff > 0.01 || lngDiff > 0.01) {
+        // La ruta cubre un área significativa, calcular zoom
+        final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
+        zoom = 14 - (maxDiff * 100); // Aproximación simple
+        
+        // Limitar el zoom a un rango razonable
+        if (zoom < 12) zoom = 12;
+        if (zoom > 17) zoom = 17;
+      } else {
+        // Ruta muy pequeña, usar zoom predeterminado
+        zoom = 16;
+      }
     }
 
     return Card(
