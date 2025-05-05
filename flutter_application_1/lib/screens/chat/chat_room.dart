@@ -32,6 +32,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
   bool _isLoadingMessages = false;
   bool _showLoadingError = false;
   String _errorMessage = '';
+  String _chatTitle = 'Chat';
 
   @override
   void initState() {
@@ -77,6 +78,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
 
   Future<void> _loadRoom() async {
     final chatService = Provider.of<ChatService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final currentUserId = authService.currentUser?.id ?? '';
     
     setState(() {
       _isLoadingMessages = true;
@@ -93,16 +96,91 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
         _currentRoom = chatService.chatRooms
             .firstWhere((room) => room.id == widget.roomId);
         print("Sala cargada correctamente: ${_currentRoom?.name}");
+        
+        // Actualizar título de chat para salas 1:1
+        if (_currentRoom != null && !_currentRoom!.isGroup && _currentRoom!.participants.length == 2) {
+          String otherUserId = _currentRoom!.participants
+              .firstWhere((id) => id != currentUserId, orElse: () => '');
+              
+          if (otherUserId.isNotEmpty) {
+            // Intentar obtener nombre del otro usuario
+            final httpService = HttpService(authService);
+            final userService = UserService(httpService);
+            
+            try {
+              final otherUser = await userService.getUserById(otherUserId);
+              if (otherUser != null && mounted) {
+                setState(() {
+                  _chatTitle = otherUser.username;
+                });
+              } else {
+                setState(() {
+                  _chatTitle = _currentRoom!.name;
+                });
+              }
+            } catch (e) {
+              print("Error al obtener datos del otro usuario: $e");
+              setState(() {
+                _chatTitle = _currentRoom!.name;
+              });
+            }
+          } else {
+            setState(() {
+              _chatTitle = _currentRoom!.name;
+            });
+          }
+        } else {
+          setState(() {
+            _chatTitle = _currentRoom?.name ?? 'Chat';
+          });
+        }
       } catch (e) {
         print("No se encontró la sala en la lista: $e");
         // Si no encontramos la sala, intentamos cargar todas las salas
-        final authService = Provider.of<AuthService>(context, listen: false);
         if (authService.currentUser != null) {
           await chatService.loadChatRooms(authService.currentUser!.id);
           // Intentamos encontrar la sala de nuevo
           try {
             _currentRoom = chatService.chatRooms
                 .firstWhere((room) => room.id == widget.roomId);
+                
+            // Actualizar título de chat para salas 1:1
+            if (_currentRoom != null && !_currentRoom!.isGroup && _currentRoom!.participants.length == 2) {
+              String otherUserId = _currentRoom!.participants
+                  .firstWhere((id) => id != currentUserId, orElse: () => '');
+                  
+              if (otherUserId.isNotEmpty) {
+                // Intentar obtener nombre del otro usuario
+                final httpService = HttpService(authService);
+                final userService = UserService(httpService);
+                
+                try {
+                  final otherUser = await userService.getUserById(otherUserId);
+                  if (otherUser != null && mounted) {
+                    setState(() {
+                      _chatTitle = otherUser.username;
+                    });
+                  } else {
+                    setState(() {
+                      _chatTitle = _currentRoom!.name;
+                    });
+                  }
+                } catch (e) {
+                  print("Error al obtener datos del otro usuario: $e");
+                  setState(() {
+                    _chatTitle = _currentRoom!.name;
+                  });
+                }
+              } else {
+                setState(() {
+                  _chatTitle = _currentRoom!.name;
+                });
+              }
+            } else {
+              setState(() {
+                _chatTitle = _currentRoom?.name ?? 'Chat';
+              });
+            }
           } catch (e) {
             print("Todavía no se encontró la sala después de recargar: $e");
           }
@@ -169,22 +247,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentRoom?.name ?? 'Chat'),
+        title: Text(_chatTitle),
         actions: [
-          // Indicador de conexión
-          Container(
-            margin: const EdgeInsets.only(right: 8.0),
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: isConnected ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(4.0),
-            ),
-            child: Icon(
-              isConnected ? Icons.wifi : Icons.wifi_off,
-              color: isConnected ? Colors.green : Colors.red,
-              size: 18.0,
-            ),
-          ),
+          // Se quitó el indicador de conexión (icono WiFi)
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadRoom,
